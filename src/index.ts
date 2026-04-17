@@ -68,3 +68,27 @@ export type {
   WriteRegistryOptions,
   WriteResult
 } from './registry/index.js';
+
+// Differ
+export {
+  diffRegistries,
+  exitCodeForDiff,
+  DEFAULT_CONFIDENCE_THRESHOLD,
+  renderDiffMarkdown,
+  renderDiffJson,
+  levenshtein,
+  similarityScore,
+  serializeSemantics,
+  entrySimilarity
+} from './differ/index.js';
+
+export type {
+  DiffResult,
+  DiffSummary,
+  DiffOptions,
+  DiffCategory,
+  UnchangedEntry,
+  ModifiedEntry,
+  RenamedEntry,
+  SimpleEntry
+} from './differ/index.js';

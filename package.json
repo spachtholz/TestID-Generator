@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "testid-tagger": "./dist/tagger/cli.js"
+    "testid-tagger": "./dist/tagger/cli.js",
+    "testid-differ": "./dist/differ/cli.js"
   },
   "exports": {
     ".": {
