@@ -1,0 +1,14 @@
+<form [formGroup]="loginForm" (ngSubmit)="submit()">
+  <label for="email">Email</label>
+  <input formcontrolname="email" type="email" placeholder="you@example.com" />
+
+  <label for="password">Password</label>
+  <input formcontrolname="password" type="password" placeholder="••••••••" />
+
+  @if (errorMessage()) {
+    <p role="alert">{{ errorMessage() }}</p>
+  }
+
+  <button type="submit">Sign in</button>
+  <a routerLink="/forgot-password">Forgot password?</a>
+</form>

@@ -1,0 +1,17 @@
+<form [formGroup]="orderForm" (ngSubmit)="submit()">
+  <p-dropdown
+    formcontrolname="customer"
+    placeholder="Kunde wählen"
+    [options]="customers"
+  ></p-dropdown>
+
+  <p-calendar formcontrolname="date" placeholder="Datum"></p-calendar>
+
+  <p-inputtext formcontrolname="quantity" placeholder="Menge"></p-inputtext>
+
+  @for (line of lineItems(); track line.id) {
+    <p-inputtext [formControlName]="'line-' + line.id"></p-inputtext>
+  }
+
+  <p-button type="submit" label="Speichern"></p-button>
+</form>

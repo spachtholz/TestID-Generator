@@ -1,0 +1,18 @@
+<p-dialog header="Einstellungen" [(visible)]="dialogVisible">
+  <form [formGroup]="settingsForm">
+    <p-multiselect
+      formcontrolname="roles"
+      placeholder="Rollen auswählen"
+      [options]="availableRoles"
+    ></p-multiselect>
+
+    <p-checkbox formcontrolname="newsletter" label="Newsletter abonnieren"></p-checkbox>
+    <p-checkbox formcontrolname="notifications" label="Benachrichtigungen"></p-checkbox>
+
+    <mat-radio-button value="light">Light theme</mat-radio-button>
+    <mat-radio-button value="dark">Dark theme</mat-radio-button>
+
+    <button type="button" (click)="save()">Speichern</button>
+    <button type="button" (click)="cancel()" data-testid="user-settings__button--preset-cancel">Abbrechen</button>
+  </form>
+</p-dialog>
