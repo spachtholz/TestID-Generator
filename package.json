@@ -1,13 +1,14 @@
 {
   "name": "testid-automation",
-  "version": "0.1.0",
-  "description": "Build-time Toolchain für Angular: generiert deterministische data-testid-Attribute.",
+  "version": "0.2.0",
+  "description": "Build-time Toolchain für Angular: generiert deterministische data-testid-Attribute, versioniert sie, diffed Registry-Stände und erzeugt Robot-Framework-Lokatoren.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "testid-tagger": "./dist/tagger/cli.js",
-    "testid-differ": "./dist/differ/cli.js"
+    "testid-differ": "./dist/differ/cli.js",
+    "testid-gen-locators": "./dist/locators/cli.js"
   },
   "exports": {
     ".": {

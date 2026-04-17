@@ -92,3 +92,12 @@ export type {
   RenamedEntry,
   SimpleEntry
 } from './differ/index.js';
+
+// Robot Framework locator generator
+export { generateLocators, renderLocatorModule, filenameForComponent } from './locators/index.js';
+export type {
+  GenerateLocatorsOptions,
+  GenerateLocatorsResult,
+  LocatorEntry,
+  LocatorModule
+} from './locators/index.js';
