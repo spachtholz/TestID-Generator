@@ -44,3 +44,27 @@ export type {
   ParseOptions,
   VisitedElement
 } from './tagger/index.js';
+
+// Registry
+export {
+  createEmptyRegistry,
+  writeRegistry,
+  serializeRegistry,
+  findHighestExistingVersion,
+  mergeWithPrevious,
+  loadRegistry,
+  loadLatestRegistry,
+  parseRegistry,
+  RegistryValidationError,
+  registryJsonSchema
+} from './registry/index.js';
+
+export type {
+  Registry,
+  RegistryEntry,
+  SemanticAttributes,
+  DynamicChildren,
+  DynamicAddressing,
+  WriteRegistryOptions,
+  WriteResult
+} from './registry/index.js';
