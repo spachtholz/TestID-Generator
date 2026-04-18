@@ -1,5 +1,13 @@
 /**
  * Public library entry for `@testid/automation`.
+ *
+ * Re-exports every programmatic API from the three sub-modules so external
+ * consumers can `import { runTagger, diffRegistries, ... } from '@testid/automation'`
+ * without needing to know the internal folder layout.
+ *
+ * If you only need the CLI, you don't need this file — the `bin` entries in
+ * package.json (`testid-tagger`, `testid-differ`) are the intended UX for
+ * most users.
  */
 
 export { VERSION } from './version.js';
@@ -101,3 +109,14 @@ export type {
   LocatorEntry,
   LocatorModule
 } from './locators/index.js';
+
+// Rollback
+export { writeBackup, rollbackLatestRun } from './rollback/index.js';
+export type {
+  BackupManifest,
+  BackupManifestEntry,
+  WriteBackupOptions,
+  WriteBackupResult,
+  RollbackOptions,
+  RollbackResult
+} from './rollback/index.js';

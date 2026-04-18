@@ -82,6 +82,16 @@ export const SUBCOMMANDS: Record<string, Subcommand> = {
     canonical: 'gen-locators',
     description: 'Alias for `gen-locators`',
     load: async () => (await import('./locators/cli.js')).main
+  },
+  rollback: {
+    canonical: 'rollback',
+    description: 'Undo the most recent tag run using the pre-run backup',
+    load: async () => (await import('./rollback/cli.js')).main
+  },
+  undo: {
+    canonical: 'rollback',
+    description: 'Alias for `rollback`',
+    load: async () => (await import('./rollback/cli.js')).main
   }
 };
 
@@ -132,6 +142,7 @@ function printGlobalHelp(stream: NodeJS.WriteStream = process.stdout): void {
   lines.push('  testid tag --configuration test --verbose');
   lines.push('  testid diff testids.v1.json testids.v2.json --out-dir diffs/');
   lines.push('  testid gen-locators testids.latest.json --out-dir tests/locators');
+  lines.push('  testid rollback                              # undo the last tag run');
   lines.push('');
   lines.push(
     pc.gray(

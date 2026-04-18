@@ -19,7 +19,7 @@ describe('testid CLI dispatcher', () => {
       Object.values(SUBCOMMANDS).map((entry) => entry.canonical)
     );
     expect(canonicals).toEqual(
-      new Set(['tag', 'diff', 'gen-locators'])
+      new Set(['tag', 'diff', 'gen-locators', 'rollback'])
     );
   });
 
