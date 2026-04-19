@@ -1,0 +1,10 @@
+src/
+test/
+docs/
+tsconfig.json
+*.tsbuildinfo
+.gitignore
+.npmignore
+*.tgz
+coverage/
+.nyc_output/
