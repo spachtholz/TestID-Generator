@@ -93,8 +93,25 @@ const NATIVE_MAP: Record<string, { short: ElementTypeShort; long: ElementTypeLon
 /** Kebab-case slug for use in `data-testid` short-type / long-type strings. */
 function slugTag(tag: string): string {
   // "p-dropdown" -> "p-dropdown"; "h1" -> "h1"; "my-custom-el" -> "my-custom-el"
-  // Replace any char outside [a-z0-9-] with a hyphen to stay url/attr-safe.
-  return tag.replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'generic';
+  // Linear single-pass scan — no regex backtracking, collapses any run of
+  // non-[a-z0-9] chars into a single hyphen and trims leading/trailing ones.
+  let out = '';
+  let pendingDash = false;
+  let hasContent = false;
+  for (let i = 0; i < tag.length; i++) {
+    const code = tag.charCodeAt(i);
+    const isAlnum =
+      (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+    if (isAlnum) {
+      if (pendingDash && hasContent) out += '-';
+      out += tag[i];
+      hasContent = true;
+      pendingDash = false;
+    } else {
+      pendingDash = true;
+    }
+  }
+  return out || 'generic';
 }
 
 /**

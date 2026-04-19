@@ -110,7 +110,13 @@ export function renderDiffMarkdown(diff: DiffResult): string {
 }
 
 function escapeCell(s: string): string {
-  return s.replace(/\|/g, '\\|');
+  // Escape backslashes first so an input `\` + `|` doesn't collapse to `\\|`
+  // (which would re-escape the backslash and leave `|` unescaped). Also
+  // neutralise newlines which would otherwise terminate the table row.
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
 }
 
 function collectAffectedComponents(diff: DiffResult): string[] {
