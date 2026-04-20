@@ -157,9 +157,21 @@ The rendered string is sanitised to a valid Python identifier; leading digits ar
 
 ---
 
-## Example
+## Example configs
 
-See `testid.config.example.json` in the repo root for a copy-paste starting point with every section filled in.
+The repo ships with a handful of ready-to-copy configs under [`examples/configs/`](../examples/configs/):
+
+| File | Best for |
+|---|---|
+| `minimal.json` | Smallest possible registry JSON. |
+| `full-featured.json` | Everything on — good default for a real project. |
+| `primeng-exclude.json` | Skip decorative PrimeNG wrappers. |
+| `custom-tag-map.json` | Map your own Angular components to readable short-types. |
+| `cypress-style.json` | `data-cy` + Cypress-friendly idFormat. |
+| `hash-only-with-readable-locators.json` | Short opaque testids, readable Python variables. |
+| `legacy-tagger-only.json` | Pre-0.4.0 shape for reference. |
+
+For concrete code-level examples (before/after templates, rollback walk-through, locator output, …) see the [Examples](Examples) page.
 
 ## Migrating from `testid-tagger.config.json`
 

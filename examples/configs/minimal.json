@@ -1,0 +1,14 @@
+{
+  "_comment": "Minimal setup — smallest possible registry JSON. Drop unused optional fields and keep only the bare essentials. Handy when the registry is a huge file and you mostly care about ids + fingerprints for diffing.",
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/testids",
+    "testConfigurationOnly": false,
+    "writeActivityLog": false,
+    "writeBackups": true,
+    "registry": {
+      "profile": "minimal"
+    }
+  }
+}

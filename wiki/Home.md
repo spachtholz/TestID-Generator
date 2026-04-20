@@ -12,5 +12,6 @@ If you're new here, start with [Features](Features) to see what it does, then ju
 - [Configuration](Configuration) — every config option explained
 - [Registry Format](Registry-Format) — what the generated JSON looks like
 - [Robot Framework Integration](Robot-Framework-Integration) — auto-generated locator files
+- [Examples](Examples) — before/after code snapshots for every stage of the tool
 - [Exit Codes](Exit-Codes) — what each return code means
 - [Development](Development) — building and contributing

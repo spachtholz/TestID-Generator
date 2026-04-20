@@ -42,7 +42,7 @@ testid diff testids.v1.json testids.v2.json --out-dir test-artifacts/testids
 testid gen-locators testids.latest.json --out-dir tests/locators
 ```
 
-All three commands read a single `testid.config.json` with `tagger` / `differ` / `locators` sections — see `testid.config.example.json` or the [Configuration](https://github.com/spachtholz/TestID-Generator/wiki/Configuration) wiki page for every option.
+All three commands read a single `testid.config.json` with `tagger` / `differ` / `locators` sections. Ready-to-copy configs for common setups live under [`examples/configs/`](examples/configs/) — minimal, full-featured, PrimeNG-exclude, Cypress-style, and a few more. For the full option reference see the [Configuration](https://github.com/spachtholz/TestID-Generator/wiki/Configuration) wiki page.
 
 ## Learn more
 
@@ -54,6 +54,7 @@ Everything else — features, configuration options, file formats, integration g
 - [Configuration](https://github.com/spachtholz/TestID-Generator/wiki/Configuration)
 - [Registry Format](https://github.com/spachtholz/TestID-Generator/wiki/Registry-Format)
 - [Robot Framework Integration](https://github.com/spachtholz/TestID-Generator/wiki/Robot-Framework-Integration)
+- [Examples](https://github.com/spachtholz/TestID-Generator/wiki/Examples)
 - [Exit Codes](https://github.com/spachtholz/TestID-Generator/wiki/Exit-Codes)
 - [Development](https://github.com/spachtholz/TestID-Generator/wiki/Development)
 

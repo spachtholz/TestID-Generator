@@ -1,8 +1,9 @@
 {
+  "_comment": "Everything turned on — full registry fields, activity log, backups, strict retention, regenerated-entry splitting in the diff. Good starting point for a real project; trim the bits you don't need.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],
-    "ignore": ["**/node_modules/**"],
+    "ignore": ["**/node_modules/**", "**/*.spec.html"],
     "registryDir": "test-artifacts/testids",
     "attributeName": "data-testid",
     "hashAlgorithm": "sha256",
@@ -10,20 +11,19 @@
     "collisionStrategy": "hash-suffix",
     "idFormat": "{component}__{element}--{key}{hash:-}",
     "testConfigurationOnly": false,
-    "registryRetention": 0,
-    "writeActivityLog": false,
+    "registryRetention": 10,
+    "writeActivityLog": true,
     "writeBackups": true,
     "ignoreTags": [],
     "customTagMap": {},
     "registry": {
-      "profile": "standard",
-      "semanticFields": ["formcontrolname", "aria_label", "placeholder", "text_content"]
+      "profile": "full"
     }
   },
   "differ": {
     "outputFormats": ["md", "json"],
     "threshold": 0.8,
-    "showRegenerated": false
+    "showRegenerated": true
   },
   "locators": {
     "variableFormat": "{component}_{element}_{key}",

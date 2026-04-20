@@ -1,0 +1,22 @@
+{
+  "_comment": "Cypress-first setup. Emits `data-cy` instead of `data-testid`, uses a short prefix-based idFormat (`cy-component-element-key`) for readable selectors in Cypress specs, and keeps the registry minimal since Cypress tests rarely need the full semantic trace.",
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/cypress-ids",
+    "attributeName": "data-cy",
+    "idFormat": "cy-{component}-{element}-{key}",
+    "hashLength": 4,
+    "testConfigurationOnly": false,
+    "registry": {
+      "profile": "minimal",
+      "includeSemantics": true,
+      "semanticFields": ["aria_label", "text_content", "formcontrolname"]
+    }
+  },
+  "locators": {
+    "attributeName": "data-cy",
+    "variableFormat": "{component}_{element}_{key}",
+    "xpathPrefix": ""
+  }
+}

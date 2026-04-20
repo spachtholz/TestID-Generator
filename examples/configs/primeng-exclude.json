@@ -1,0 +1,29 @@
+{
+  "_comment": "Skip purely-decorative PrimeNG wrappers (panels, cards, toolbars) so the registry stays focused on interactive elements. The child elements inside these wrappers are still tagged normally — only the wrapper itself is ignored.",
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/testids",
+    "testConfigurationOnly": false,
+    "ignoreTags": [
+      "p-panel",
+      "p-fieldset",
+      "p-card",
+      "p-divider",
+      "p-tab",
+      "p-tabview",
+      "p-tabpanel",
+      "p-toolbar",
+      "p-splitter",
+      "p-splitterpanel",
+      "p-scrollpanel",
+      "p-accordion",
+      "p-accordiontab",
+      "p-skeleton",
+      "p-progressbar"
+    ],
+    "registry": {
+      "profile": "standard"
+    }
+  }
+}

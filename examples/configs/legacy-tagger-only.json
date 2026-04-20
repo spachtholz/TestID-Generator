@@ -1,4 +1,5 @@
 {
+  "_comment": "Pre-0.4.0 shape kept for reference. Place this file at the project root as `testid-tagger.config.json` and the loader will wrap it into the new tagger section on-the-fly. For new projects, prefer the unified `testid.config.json`.",
   "rootDir": "src",
   "include": ["**/*.component.html"],
   "ignore": ["**/node_modules/**"],

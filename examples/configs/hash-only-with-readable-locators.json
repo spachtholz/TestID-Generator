@@ -1,0 +1,18 @@
+{
+  "_comment": "Short opaque testids in the HTML, but readable Python variable names in the generated Robot-Framework files. idFormat is pure hash (tid-{hash} always present), variableFormat pulls component + element + key from the registry so tests stay self-documenting.",
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/testids",
+    "testConfigurationOnly": false,
+    "idFormat": "tid-{hash}",
+    "hashLength": 8,
+    "collisionStrategy": "error",
+    "registry": {
+      "profile": "standard"
+    }
+  },
+  "locators": {
+    "variableFormat": "{component}_{element}_{key}"
+  }
+}
