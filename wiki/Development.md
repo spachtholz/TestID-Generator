@@ -9,6 +9,17 @@ npm test         # vitest
 npm pack         # bundles a .tgz
 ```
 
+## Security & SBOM
+
+Two more scripts wired up in `package.json`, both using only built-in npm tooling — no extra deps:
+
+```bash
+npm run audit    # npm audit with --audit-level=high (non-zero exit on high/critical)
+npm run sbom     # writes sbom.cdx.json (CycloneDX) + sbom.spdx.json (SPDX)
+```
+
+SBOM files land in the repo root and are `.gitignore`d. For CI, the same two commands run in `.github/workflows/security.yml` on every push, every PR and weekly on cron — SBOM artefacts are kept for 90 days. The workflow also runs `dependency-review-action` on PRs to block newly-introduced high-severity CVEs.
+
 ## How the code is laid out
 
 Sources live under `src/`, tests under `test/`. The public library API sits in `src/index.ts`, and each CLI gets its own `src/**/cli.ts` — the `tag`, `diff`, and `gen-locators` commands are all siblings, not buried inside one monolithic entry point.

@@ -1,0 +1,67 @@
+name: Security
+
+# Run dependency security checks on every push to main, every PR, and weekly
+# on a cron — so newly-disclosed CVEs in already-installed deps surface even
+# when nothing in the repo has changed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 5 * * 1'  # Mondays at 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run npm audit (fail on high / critical)
+        run: npm audit --audit-level=high
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: CycloneDX SBOM
+        run: npm sbom --sbom-format=cyclonedx > sbom.cdx.json
+      - name: SPDX SBOM
+        run: npm sbom --sbom-format=spdx > sbom.spdx.json
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.*.json
+          retention-days: 90
+
+  dependency-review:
+    name: Dependency Review
+    # Only on PRs — compares the base branch's deps against the PR's and
+    # blocks on newly-introduced vulnerabilities or incompatible licences.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always

@@ -339,6 +339,7 @@ Sometimes you want short opaque testids in the DOM (fewer bytes, no leaked seman
   "tagger": {
     "idFormat": "tid-{hash}",
     "hashLength": 8,
+    "alwaysHash": true,
     "collisionStrategy": "error"
   },
   "locators": {
@@ -346,6 +347,10 @@ Sometimes you want short opaque testids in the DOM (fewer bytes, no leaked seman
   }
 }
 ```
+
+**Why `alwaysHash: true`?** By default, the hash is only emitted when the tagger needs to disambiguate a collision. With `alwaysHash: true`, it's always computed — a requirement for hash-only formats where the hash *is* the id.
+
+**Why `collisionStrategy: "error"`?** Short hashes can — very rarely — collide. In a hash-only setup you want to know immediately and add a distinguishing semantic, not silently get longer ids.
 
 ### HTML stays opaque
 

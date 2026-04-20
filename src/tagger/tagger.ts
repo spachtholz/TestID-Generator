@@ -452,7 +452,7 @@ export function tagTemplateSource(
       primaryValue: c.fingerprint.primaryValue,
       tag: c.detected.tag,
       fingerprint: c.fingerprint.fingerprint,
-      needsHashSuffix: !c.fingerprint.primaryValue,
+      needsHashSuffix: config.alwaysHash || !c.fingerprint.primaryValue,
       hashLength: options.hashLength,
       hashAlgorithm: config.hashAlgorithm,
       idFormat: config.idFormat

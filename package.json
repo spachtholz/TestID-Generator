@@ -28,6 +28,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "audit": "npm audit --audit-level=high",
+    "sbom": "npm sbom --sbom-format=cyclonedx > sbom.cdx.json && npm sbom --sbom-format=spdx > sbom.spdx.json",
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {

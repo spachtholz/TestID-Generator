@@ -39,6 +39,7 @@ All three sections are optional. Empty config = all defaults. You only need to s
 | `hashLength` | `6` | Hash-suffix length, 4–16. |
 | `collisionStrategy` | `"hash-suffix"` | `hash-suffix` or `error`. |
 | `idFormat` | `"{component}__{element}--{key}{hash:-}"` | Naming template (see placeholders below). |
+| `alwaysHash` | `false` | Force `{hash}` / `{hash:-}` to always render, not just on collisions. Use with hash-only `idFormat`s like `"tid-{hash}"`. |
 | `testConfigurationOnly` | `true` | Only run in `--configuration=test`. |
 | `registryRetention` | `0` | Keep only the N most recent `testids.vN.json` (0 = keep all). |
 | `writeActivityLog` | `false` | Emit `activity.v{N}.md` + `.json` per run. |

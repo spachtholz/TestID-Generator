@@ -7,6 +7,7 @@
     "testConfigurationOnly": false,
     "idFormat": "tid-{hash}",
     "hashLength": 8,
+    "alwaysHash": true,
     "collisionStrategy": "error",
     "registry": {
       "profile": "standard"

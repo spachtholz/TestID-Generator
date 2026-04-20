@@ -155,6 +155,18 @@ export const TaggerConfigSchema = z.object({
    */
   idFormat: z.string().min(1).default('{component}__{element}--{key}{hash:-}'),
   /**
+   * When true, the fingerprint hash is always computed (and therefore `{hash}`
+   * and `{hash:-}` placeholders always render). The default is false: the hash
+   * only appears when the tagger needs to disambiguate a collision or when the
+   * element has no semantic key, so legacy `idFormat`s stay backwards-compatible.
+   *
+   * Set this to `true` for hash-only testid shapes like `"tid-{hash}"`, where
+   * every id must carry a hash for uniqueness even when the fingerprint already
+   * has a nice primary value. `collisionStrategy: "error"` pairs naturally with
+   * this mode — short hashes can collide, and you want to know immediately.
+   */
+  alwaysHash: z.boolean().default(false),
+  /**
    * Controls which optional fields are serialized into `testids.v{N}.json`.
    * A `profile` picks a baseline ('minimal' / 'standard' / 'full'), and any
    * sibling boolean overrides win over the profile. `semanticFields` restricts
