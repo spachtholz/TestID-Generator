@@ -20,6 +20,7 @@ import {
   loadFullHistory,
   loadLatestRegistry,
   mergeEntriesWithHistory,
+  resolveRegistryOptions,
   writeRegistry,
   type MergedEntryInfo,
   type Registry,
@@ -247,7 +248,8 @@ export async function runTagger(
     const write = await writeRegistry(registry, {
       dir: registryDir,
       version: nextVersion,
-      retention: config.registryRetention
+      retention: config.registryRetention,
+      serializationOptions: resolveRegistryOptions(config.registry)
     });
     registryPath = write.versionedPath;
     latestPath = write.latestPath;

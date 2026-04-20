@@ -5,7 +5,6 @@
  * accept plain JS/JSON configs as a fallback.
  */
 
-import { pathToFileURL } from 'node:url';
 import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { z } from 'zod';
@@ -154,7 +153,36 @@ export const TaggerConfigSchema = z.object({
    * matches the historical hard-coded shape. Override for Cypress conventions,
    * shorter ids, or custom prefixes like `"tid-{component}-{key}"`.
    */
-  idFormat: z.string().min(1).default('{component}__{element}--{key}{hash:-}')
+  idFormat: z.string().min(1).default('{component}__{element}--{key}{hash:-}'),
+  /**
+   * Controls which optional fields are serialized into `testids.v{N}.json`.
+   * A `profile` picks a baseline ('minimal' / 'standard' / 'full'), and any
+   * sibling boolean overrides win over the profile. `semanticFields` restricts
+   * which sub-keys of `semantic` are kept (when `includeSemantics` is on).
+   */
+  registry: z
+    .object({
+      profile: z.enum(['minimal', 'standard', 'full']).default('full'),
+      includeSemantics: z.boolean().optional(),
+      includeSource: z.boolean().optional(),
+      includeHistory: z.boolean().optional(),
+      includeDynamicChildren: z.boolean().optional(),
+      semanticFields: z
+        .array(
+          z.enum([
+            'formcontrolname',
+            'name',
+            'routerlink',
+            'aria_label',
+            'placeholder',
+            'text_content',
+            'type',
+            'role'
+          ])
+        )
+        .optional()
+    })
+    .default({})
 });
 
 export type TaggerConfig = z.infer<typeof TaggerConfigSchema>;
@@ -196,44 +224,25 @@ export async function findDefaultConfig(searchDir: string): Promise<string | nul
 }
 
 /**
- * Load a config file from disk. Supports `.json` (first-class, zero deps),
- * `.mjs`, `.js`, `.ts` (via dynamic import — TS needs a runtime loader).
+ * Load the tagger-specific slice of the unified config. Backwards-compatible
+ * wrapper around the unified loader — takes the `tagger` section and returns
+ * it in the pre-0.4.0 shape so existing callers don't have to change.
  *
- * When `configPath` is not provided, this returns the schema defaults — the
- * caller can still search via {@link findDefaultConfig}. We keep the two
- * steps separate so the CLI can report which file it found (or didn't find)
- * to the user.
+ * When you also need differ/locator config, call {@link loadTestidConfig}
+ * directly and read all three sections yourself.
  */
 export async function loadConfig(configPath?: string): Promise<{
   config: TaggerConfig;
   configPath: string | null;
   sourceDir: string;
 }> {
-  if (!configPath) {
-    return {
-      config: DEFAULT_CONFIG,
-      configPath: null,
-      sourceDir: process.cwd()
-    };
-  }
-
-  const absPath = path.resolve(process.cwd(), configPath);
-  const ext = path.extname(absPath).toLowerCase();
-
-  let raw: unknown;
-  if (ext === '.json') {
-    const str = await fs.readFile(absPath, 'utf8');
-    raw = JSON.parse(str);
-  } else {
-    const url = pathToFileURL(absPath).href;
-    const mod = (await import(url)) as Record<string, unknown>;
-    raw = mod.default ?? mod.config ?? mod;
-  }
-
-  const parsed = TaggerConfigSchema.parse(raw);
+  // Lazy import to avoid circular dependency at module-init time (schema.ts
+  // imports from this file).
+  const { loadTestidConfig } = await import('../config/loader.js');
+  const result = await loadTestidConfig(configPath);
   return {
-    config: parsed,
-    configPath: absPath,
-    sourceDir: path.dirname(absPath)
+    config: result.config.tagger,
+    configPath: result.configPath,
+    sourceDir: result.sourceDir
   };
 }

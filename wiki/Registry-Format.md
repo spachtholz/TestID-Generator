@@ -30,18 +30,21 @@ Every tagger run writes two files into `registryDir`:
 
 ## What each field means
 
-| Field | Meaning |
-|---|---|
-| `component` | Path to the template, relative to the project root. |
-| `tag` | The HTML or PrimeNG tag this ID belongs to. |
-| `element_type` | A coarse classification — `primeng_table`, `input`, `button`, and so on. |
-| `fingerprint` | A deterministic signature built from the tag and its semantics. Stable across runs. |
-| `semantic` | Whatever semantic hints the tagger extracted — aria-label, formcontrolname, placeholder, text, type. |
-| `source` | `"generated"` if the tagger wrote it, `"manual"` if a human did. |
-| `first_seen_version` | The first registry version this entry appeared in. |
-| `last_seen_version` | The most recent registry version it showed up in. |
-| `last_generated_at` | ISO timestamp of the last time it was (re)generated. |
-| `generation_history` | The list of versions in which this entry was created or recreated. |
+| Field | Always present? | Meaning |
+|---|---|---|
+| `component` | ✅ | Path to the template, relative to the project root. |
+| `tag` | ✅ | The HTML or PrimeNG tag this ID belongs to. |
+| `element_type` | ✅ | A coarse classification — `primeng_table`, `input`, `button`, and so on. |
+| `fingerprint` | ✅ | A deterministic signature built from the tag and its semantics. Stable across runs. |
+| `semantic` | ✅ (may be `{}`) | Whatever semantic hints the tagger extracted — aria-label, formcontrolname, placeholder, text, type. The sub-keys are controlled by `tagger.registry.semanticFields` in the config. |
+| `first_seen_version` | ✅ | The first registry version this entry appeared in. |
+| `last_seen_version` | ✅ | The most recent registry version it showed up in. |
+| `source` | profile-gated | `"generated"` if the tagger wrote it, `"manual"` if a human did. |
+| `dynamic_children` | profile-gated | Overlay / pop-up selector pattern (PrimeNG dropdowns, calendars, …). |
+| `last_generated_at` | profile-gated | ISO timestamp of the last time it was (re)generated. |
+| `generation_history` | profile-gated | The list of versions in which this entry was created or recreated. |
+
+Which optional fields appear depends on your `tagger.registry.profile` (`minimal` / `standard` / `full`) and any per-field overrides. See the [Configuration](Configuration) page for the full matrix.
 
 ## Check it into git
 

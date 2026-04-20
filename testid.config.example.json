@@ -1,0 +1,33 @@
+{
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "ignore": ["**/node_modules/**"],
+    "registryDir": "test-artifacts/testids",
+    "attributeName": "data-testid",
+    "hashAlgorithm": "sha256",
+    "hashLength": 6,
+    "collisionStrategy": "hash-suffix",
+    "idFormat": "{component}__{element}--{key}{hash:-}",
+    "testConfigurationOnly": false,
+    "registryRetention": 0,
+    "writeActivityLog": false,
+    "writeBackups": true,
+    "ignoreTags": [],
+    "customTagMap": {},
+    "registry": {
+      "profile": "standard",
+      "semanticFields": ["formcontrolname", "aria_label", "placeholder", "text_content"]
+    }
+  },
+  "differ": {
+    "outputFormats": ["md", "json"],
+    "threshold": 0.8,
+    "showRegenerated": false
+  },
+  "locators": {
+    "variableFormat": "{component}_{element}_{key}",
+    "xpathPrefix": "xpath:",
+    "overwrite": true
+  }
+}

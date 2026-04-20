@@ -9,4 +9,4 @@
  * (`grep -q \"$(cat package.json | jq -r .version)\" src/version.ts`)
  * catches drift in one command.
  */
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';

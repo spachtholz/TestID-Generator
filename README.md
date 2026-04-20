@@ -1,6 +1,6 @@
 # testid-automation
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2020-brightgreen.svg)](https://nodejs.org/)
 [![Angular](https://img.shields.io/badge/angular-%E2%89%A5%2018-dd0031.svg)](https://angular.dev/)
@@ -23,10 +23,10 @@ npm run build
 npm pack
 
 # Globally
-npm install -g ./testid-automation-0.3.0.tgz
+npm install -g ./testid-automation-0.4.0.tgz
 
 # Or just as a dev dependency
-npm install --save-dev ./testid-automation-0.3.0.tgz
+npm install --save-dev ./testid-automation-0.4.0.tgz
 ```
 
 ## Quick start
@@ -35,12 +35,14 @@ npm install --save-dev ./testid-automation-0.3.0.tgz
 # Tag your templates
 testid tag --verbose
 
-# See what changed between two versions
+# See what changed between two versions (md + json by default, --format picks)
 testid diff testids.v1.json testids.v2.json --out-dir test-artifacts/testids
 
-# Generate Robot Framework locators
+# Generate Robot Framework locators (variable names built from semantic data)
 testid gen-locators testids.latest.json --out-dir tests/locators
 ```
+
+All three commands read a single `testid.config.json` with `tagger` / `differ` / `locators` sections — see `testid.config.example.json` or the [Configuration](https://github.com/spachtholz/TestID-Generator/wiki/Configuration) wiki page for every option.
 
 ## Learn more
 

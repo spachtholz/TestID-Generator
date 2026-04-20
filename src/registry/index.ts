@@ -22,6 +22,18 @@ export type { WriteRegistryOptions, WriteResult, ManualOverrideEvent } from './w
 export { mergeEntriesWithHistory } from './merge.js';
 export type { MergeDisposition, MergeOptions, MergedEntryInfo } from './merge.js';
 
+export {
+  resolveRegistryOptions,
+  applyRegistryProfile,
+  ALL_SEMANTIC_FIELDS
+} from './serialization.js';
+export type {
+  RegistryProfile,
+  RegistryConfigInput,
+  ResolvedRegistryOptions,
+  SemanticFieldName
+} from './serialization.js';
+
 export { loadFullHistory } from './history.js';
 export type { HistoryMap, IdHistoryRecord } from './history.js';
 

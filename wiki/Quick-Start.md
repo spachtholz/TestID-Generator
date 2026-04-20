@@ -4,18 +4,22 @@ Five minutes from zero to your first tagged templates.
 
 ## 1. Drop in a config
 
-Create `testid-tagger.config.json` in the root of your Angular project:
+Create `testid.config.json` in the root of your Angular project:
 
 ```json
 {
-  "rootDir": "src",
-  "include": ["**/*.component.html"],
-  "registryDir": "test-artifacts/testids",
-  "testConfigurationOnly": false
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/testids",
+    "testConfigurationOnly": false
+  }
 }
 ```
 
 That's a minimal setup — we'll cover the rest in [Configuration](Configuration).
+
+> **Legacy note:** Projects on v0.3.x used `testid-tagger.config.json` with root-level fields. That file still works — the tagger maps it into the new `tagger` section automatically. No migration is required to upgrade.
 
 ## 2. Tag your templates
 

@@ -19,10 +19,10 @@ If you want the `testid` command available anywhere:
 npm install
 npm run build
 npm pack
-# → produces testid-automation-0.3.0.tgz
+# → produces testid-automation-0.4.0.tgz
 
 # 2. Install globally
-npm install -g ./testid-automation-0.3.0.tgz
+npm install -g ./testid-automation-0.4.0.tgz
 
 # 3. Sanity check
 testid --help
@@ -33,7 +33,7 @@ testid --help
 If you'd rather scope it to a single project:
 
 ```bash
-npm install --save-dev ./testid-automation-0.3.0.tgz
+npm install --save-dev ./testid-automation-0.4.0.tgz
 npx testid tag --configuration test
 ```
 

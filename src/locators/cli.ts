@@ -17,6 +17,7 @@ import { loadRegistry } from '../registry/index.js';
 import { generateLocators } from './generator.js';
 import { VERSION } from '../version.js';
 import { runIfDirect } from '../cli-common.js';
+import { loadTestidConfig } from '../config/loader.js';
 
 export async function main(argv: readonly string[] = process.argv): Promise<number> {
   const program = new Command();
@@ -31,9 +32,13 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     .option('--attribute-name <name>', 'Override data-testid attribute name')
     .option(
       '--xpath-prefix <prefix>',
-      "XPath prefix (default 'xpath:'). Pass '' to omit.",
-      'xpath:'
+      "XPath prefix (default 'xpath:'). Pass '' to omit."
     )
+    .option(
+      '--variable-format <template>',
+      'Python variable-name template. Placeholders: {component}, {element}, {key}, {tag}, {hash}. Default: {component}_{element}_{key}'
+    )
+    .option('--config <path>', 'Path to testid.config.json')
     .option(
       '--no-overwrite',
       'Refuse to overwrite pre-existing target files. Default: overwrite.'
@@ -56,7 +61,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   const opts = program.opts<{
     outDir: string;
     attributeName?: string;
-    xpathPrefix: string;
+    xpathPrefix?: string;
+    variableFormat?: string;
+    config?: string;
     overwrite: boolean;
     quiet?: boolean;
   }>();
@@ -65,6 +72,10 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     process.stderr.write(pc.red('[testid-gen-locators] Missing <registry> argument.\n'));
     return 2;
   }
+
+  const configResult = await loadTestidConfig(opts.config);
+  const locatorsConfig = configResult.config.locators;
+  const taggerConfig = configResult.config.tagger;
 
   let registry;
   try {
@@ -79,9 +90,10 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   try {
     const result = await generateLocators(registry, {
       outDir: opts.outDir,
-      attributeName: opts.attributeName,
-      xpathPrefix: opts.xpathPrefix,
-      overwrite: opts.overwrite
+      attributeName: opts.attributeName ?? locatorsConfig.attributeName ?? taggerConfig.attributeName,
+      xpathPrefix: opts.xpathPrefix ?? locatorsConfig.xpathPrefix,
+      overwrite: opts.overwrite,
+      variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat
     });
     if (!opts.quiet) {
       process.stdout.write(

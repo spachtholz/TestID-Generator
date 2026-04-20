@@ -10,6 +10,10 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { canonicalizeJson } from '../util/canonical-json.js';
+import {
+  applyRegistryProfile,
+  type ResolvedRegistryOptions
+} from './serialization.js';
 import type { Registry, RegistryEntry } from './schema.js';
 
 export interface WriteResult {
@@ -54,9 +58,18 @@ export async function findHighestExistingVersion(dir: string): Promise<number> {
  * Serialise a registry to a canonical, deterministic JSON string (NFR-3).
  * Keys are sorted alphabetically at every level so two equal registries always
  * produce byte-identical output, which CI pipelines rely on for change detection.
+ *
+ * When `serializationOptions` is provided, the registry first passes through
+ * {@link applyRegistryProfile} so that user-disabled fields are stripped.
  */
-export function serializeRegistry(registry: Registry): string {
-  return JSON.stringify(canonicalizeJson(registry), null, 2) + '\n';
+export function serializeRegistry(
+  registry: Registry,
+  serializationOptions?: ResolvedRegistryOptions
+): string {
+  const projected = serializationOptions
+    ? applyRegistryProfile(registry, serializationOptions)
+    : registry;
+  return JSON.stringify(canonicalizeJson(projected), null, 2) + '\n';
 }
 
 export interface WriteRegistryOptions {
@@ -73,6 +86,11 @@ export interface WriteRegistryOptions {
    * policy. A value of 0 (default) keeps every version — backwards compatible.
    */
   retention?: number;
+  /**
+   * Registry-profile options controlling which optional fields are serialized.
+   * When omitted, the full internal registry is written (backwards compatible).
+   */
+  serializationOptions?: ResolvedRegistryOptions;
 }
 
 /**
@@ -93,7 +111,7 @@ export async function writeRegistry(
     options.version ?? (await findHighestExistingVersion(dir)) + 1;
 
   const finalRegistry: Registry = { ...registry, version };
-  const serialized = serializeRegistry(finalRegistry);
+  const serialized = serializeRegistry(finalRegistry, options.serializationOptions);
 
   const versionedPath = path.join(dir, `testids.v${version}.json`);
   const latestPath = path.join(dir, LATEST_FILE_NAME);

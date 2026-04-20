@@ -85,7 +85,18 @@ describe('generateLocators', () => {
     const registry: Registry = {
       ...createEmptyRegistry(1, '2026-04-17T10:00:00Z'),
       entries: {
-        'order-list__th--id': entry({ component: 'src/app/order-list/order-list.component.html' }),
+        'order-list__th--id': entry({
+          component: 'src/app/order-list/order-list.component.html',
+          tag: 'th',
+          element_type: 'dom_th',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'id',
+            type: null
+          }
+        }),
         'login__input--email': entry({ component: 'src/app/login/login.component.html' })
       }
     };
@@ -94,7 +105,9 @@ describe('generateLocators', () => {
     expect(result.writtenPaths).toHaveLength(2);
     const orderListFile = path.join(dir, 'order_list.py');
     const content = await fs.readFile(orderListFile, 'utf8');
-    expect(content).toContain('orderListThId');
+    // Default variableFormat `{component}_{element}_{key}` — `th` tag with
+    // text_content='id' yields orderList_domTh_id.
+    expect(content).toContain('orderList_domTh_id');
     expect(content).toContain("xpath://*[@data-testid='order-list__th--id']");
   });
 

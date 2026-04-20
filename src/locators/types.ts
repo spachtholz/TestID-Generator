@@ -41,6 +41,13 @@ export interface GenerateLocatorsOptions {
    * error is raised for any pre-existing target. Default: true.
    */
   overwrite?: boolean;
+  /**
+   * Template for Python variable names. Placeholders: `{component}`,
+   * `{element}`, `{key}`, `{tag}`, `{hash}` — same vocabulary as the tagger's
+   * `idFormat`. Default: `{component}_{element}_{key}` keeps names readable
+   * even for hash-only testids.
+   */
+  variableFormat?: string;
 }
 
 export interface GenerateLocatorsResult {

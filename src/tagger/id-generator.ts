@@ -18,7 +18,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import { kebab, renderIdTemplate } from '../util/id-template.js';
 import type { ElementTypeShort } from './element-detector.js';
+
+export { kebab } from '../util/id-template.js';
 
 export type HashAlgorithm = 'sha256' | 'sha1' | 'md5';
 
@@ -46,29 +49,6 @@ export interface GenerateIdInput {
   hashAlgorithm?: HashAlgorithm;
   /** Template string (default: {@link DEFAULT_ID_FORMAT}). */
   idFormat?: string;
-}
-
-/**
- * Kebab-case a string per the FR-1.7 slug rules.
- *
- *   - Lowercase.
- *   - Non-alphanumeric characters collapsed to `-`.
- *   - Multiple dashes collapsed to one, leading/trailing dashes stripped.
- *
- * Empty string falls back to `"unknown"` so we never emit IDs like `--`.
- */
-export function kebab(input: string): string {
-  if (!input) return 'unknown';
-  // insert dashes at camelCase boundaries first
-  const withBoundaries = input
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2');
-  const slug = withBoundaries
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug.length > 0 ? slug : 'unknown';
 }
 
 /** Derive a component short name from a template file path. */
@@ -112,13 +92,3 @@ export function generateId(input: GenerateIdInput): string {
   return renderIdTemplate(format, values);
 }
 
-/**
- * Substitute `{placeholder}` occurrences in the format string. Unknown names
- * render literally (so users can include `{}` in their testids intentionally,
- * though that is rarely useful).
- */
-function renderIdTemplate(format: string, values: Record<string, string>): string {
-  return format.replace(/\{([^{}]+)\}/g, (match, name) => {
-    return Object.prototype.hasOwnProperty.call(values, name) ? values[name]! : match;
-  });
-}

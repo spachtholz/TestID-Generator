@@ -7,7 +7,12 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { Registry } from '../registry/index.js';
-import { buildLocatorEntry, filenameForComponent, renderLocatorModule } from './render.js';
+import {
+  buildLocatorEntry,
+  DEFAULT_VARIABLE_FORMAT,
+  filenameForComponent,
+  renderLocatorModule
+} from './render.js';
 import type {
   GenerateLocatorsOptions,
   GenerateLocatorsResult,
@@ -22,8 +27,9 @@ export async function generateLocators(
   const attributeName = options.attributeName ?? 'data-testid';
   const xpathPrefix = options.xpathPrefix ?? 'xpath:';
   const overwrite = options.overwrite ?? true;
+  const variableFormat = options.variableFormat ?? DEFAULT_VARIABLE_FORMAT;
 
-  const modules = buildModules(registry, attributeName, xpathPrefix);
+  const modules = buildModules(registry, attributeName, xpathPrefix, variableFormat);
 
   await fs.mkdir(options.outDir, { recursive: true });
   // Use `wx` (write-exclusive) instead of a prior access() probe to keep the
@@ -56,12 +62,18 @@ export async function generateLocators(
 function buildModules(
   registry: Registry,
   attributeName: string,
-  xpathPrefix: string
+  xpathPrefix: string,
+  variableFormat: string
 ): LocatorModule[] {
   const byComponent = new Map<string, LocatorEntry[]>();
   for (const [testid, entry] of Object.entries(registry.entries)) {
     const component = componentNameFromPath(entry.component);
-    const locator = buildLocatorEntry(testid, attributeName, xpathPrefix);
+    const locator = buildLocatorEntry(testid, {
+      attributeName,
+      xpathPrefix,
+      variableFormat,
+      entry
+    });
     const list = byComponent.get(component) ?? [];
     list.push(locator);
     byComponent.set(component, list);
