@@ -1,15 +1,5 @@
 #!/usr/bin/env node
-/**
- * diff-testids CLI.
- *
- * Usage:
- *   diff-testids <old.json> <new.json> --out-dir <dir>
- *
- * Exit codes (FR-3.5):
- *   0 → no changes or only additions
- *   1 → removed / renamed / modified entries (review needed)
- *   2 → registry load / validation error
- */
+// diff-testids CLI. Exit codes: 0 safe, 1 review needed, 2 load error.
 
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -24,10 +14,7 @@ import { loadTestidConfig } from '../config/loader.js';
 
 type DiffFormat = 'md' | 'json';
 
-/**
- * Parse a comma-separated --format value (e.g. `md,json` or just `json`).
- * Returns null for an empty / whitespace-only string; throws on unknown values.
- */
+// parse `md,json` or `json`; throws on unknown value
 function parseFormatList(raw: string): DiffFormat[] | null {
   const parts = raw
     .split(',')
@@ -104,12 +91,10 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     return 2;
   }
 
-  // Config backs CLI flags — the flag always wins, but un-passed flags inherit
-  // the differ section of the unified config (with its own defaults baked in).
   const configResult = await loadTestidConfig(opts.config);
   const differConfig = configResult.config.differ;
 
-  // Resolve output formats: explicit --format > legacy --json-only > config.
+  // explicit --format > legacy --json-only > config default
   let formats: DiffFormat[];
   try {
     if (opts.format) {
@@ -172,8 +157,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       if (!opts.quiet) process.stdout.write(pc.gray(`[testid-differ] wrote ${mdPath}\n`));
     }
   } else if (!opts.quiet) {
-    // No --out-dir: print one of the formats to stdout. Markdown is the
-    // friendlier default; fall back to JSON if the user only asked for json.
+    // no --out-dir: print to stdout, md first, else json
     if (wantsMd) process.stdout.write(renderDiffMarkdown(diff));
     else if (wantsJson) process.stdout.write(renderDiffJson(diff));
   }

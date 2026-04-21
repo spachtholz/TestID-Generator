@@ -1,5 +1,5 @@
 {
-  "_comment": "Skip purely-decorative PrimeNG wrappers (panels, cards, toolbars) so the registry stays focused on interactive elements. The child elements inside these wrappers are still tagged normally — only the wrapper itself is ignored.",
+  "_comment": "Skip purely-decorative PrimeNG wrappers (panels, cards, toolbars) so the registry stays focused on interactive elements. The child elements inside these wrappers are still tagged normally - only the wrapper itself is ignored.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],

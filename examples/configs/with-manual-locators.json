@@ -1,0 +1,16 @@
+{
+  "_comment": "Keeps merge-mode explicit in the config so the behaviour doesn't drift if the default ever changes. Use when you rely on custom locator helpers living inside generated .py files.",
+  "tagger": {
+    "rootDir": "src",
+    "include": ["**/*.component.html"],
+    "registryDir": "test-artifacts/testids",
+    "testConfigurationOnly": false,
+    "registry": {
+      "profile": "standard"
+    }
+  },
+  "locators": {
+    "variableFormat": "{component}_{element}_{key}",
+    "mode": "merge"
+  }
+}

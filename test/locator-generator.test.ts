@@ -105,7 +105,7 @@ describe('generateLocators', () => {
     expect(result.writtenPaths).toHaveLength(2);
     const orderListFile = path.join(dir, 'order_list.py');
     const content = await fs.readFile(orderListFile, 'utf8');
-    // Default variableFormat `{component}_{element}_{key}` — `th` tag with
+    // Default variableFormat `{component}_{element}_{key}` - `th` tag with
     // text_content='id' yields orderList_domTh_id.
     expect(content).toContain('orderList_domTh_id');
     expect(content).toContain("xpath://*[@data-testid='order-list__th--id']");

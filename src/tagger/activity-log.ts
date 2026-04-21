@@ -1,34 +1,23 @@
-/**
- * Human- and machine-readable activity log for a single tagger run.
- *
- * The registry captures *current state* — it answers "what testids exist
- * today?". The activity log captures *what happened this run* — it answers
- * "which elements got a new id, which kept one, which came back after being
- * removed?". Together the two files work like a git working tree plus commit
- * message.
- *
- * Writing this file is opt-in: it's only produced when the user passes
- * `--verbose` to the CLI or flips `writeActivityLog: true` in the config.
- */
+// Per-run activity log: which ids are new, carried over, regenerated, or
+// manually overridden. Opt-in via `--verbose` or `writeActivityLog: true`.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { MergedEntryInfo } from '../registry/merge.js';
 
 export type ActivityKind =
-  | 'new' // brand-new id in this version
-  | 'regenerated' // id had been removed, now back
-  | 'carried-over' // id existed in the previous version too
-  | 'manual-override'; // the developer pinned a testid the tagger would not have chosen
+  | 'new'
+  | 'regenerated'
+  | 'carried-over'
+  | 'manual-override';
 
 export interface ActivityRecord {
   id: string;
   component: string;
   kind: ActivityKind;
   source: 'generated' | 'manual';
-  /** For `regenerated`: the version the id was last seen in. */
+  /** regenerated: version the id was last seen in */
   previousVersion?: number;
-  /** Timestamp at which the id was (re-)established this run — if applicable. */
   generatedAt?: string;
 }
 
@@ -38,11 +27,6 @@ export interface ActivityReport {
   records: ActivityRecord[];
 }
 
-/**
- * Build the structured activity report from the merge result. The tagger knows
- * which entries are manual overrides by comparing `existingId` to what it
- * would have generated; that classification is forwarded here.
- */
 export function buildActivityReport(input: {
   version: number;
   generatedAt: string;
@@ -79,7 +63,7 @@ export function renderActivityMarkdown(report: ActivityReport): string {
   for (const r of report.records) byKind[r.kind].push(r);
 
   const lines: string[] = [];
-  lines.push(`# Tagger Activity — v${report.version}`);
+  lines.push(`# Tagger Activity - v${report.version}`);
   lines.push('');
   lines.push(`_Generated at ${report.generatedAt}_`);
   lines.push('');
@@ -94,16 +78,16 @@ export function renderActivityMarkdown(report: ActivityReport): string {
   lines.push('');
 
   appendSection(lines, '## New', byKind.new, (r) =>
-    `- \`${r.id}\` — ${r.component} (${r.source})`
+    `- \`${r.id}\` - ${r.component} (${r.source})`
   );
   appendSection(lines, '## Regenerated', byKind.regenerated, (r) =>
-    `- \`${r.id}\` — ${r.component} (last seen in v${r.previousVersion}, re-generated at ${r.generatedAt ?? 'n/a'})`
+    `- \`${r.id}\` - ${r.component} (last seen in v${r.previousVersion}, re-generated at ${r.generatedAt ?? 'n/a'})`
   );
   appendSection(lines, '## Manual Override', byKind['manual-override'], (r) =>
-    `- \`${r.id}\` — ${r.component}`
+    `- \`${r.id}\` - ${r.component}`
   );
 
-  // Carried-over is the boring majority — we do not dump it inline; summary count is enough.
+  // Carried-over is the boring majority - we do not dump it inline; summary count is enough.
   lines.push('');
   return lines.join('\n');
 }

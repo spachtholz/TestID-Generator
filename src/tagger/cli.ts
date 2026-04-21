@@ -1,13 +1,5 @@
 #!/usr/bin/env node
-/**
- * testid-tagger CLI.
- *
- * Injects deterministic data-testid attributes into Angular templates. Runs
- * standalone against any Angular project — no build-pipeline integration
- * required.
- *
- * Run `testid-tagger --help` for the flag reference.
- */
+// testid-tagger CLI. Run --help for flags.
 
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -132,7 +124,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     if (result.version === 0 && config.testConfigurationOnly && opts.configuration !== 'test') {
       process.stdout.write(
         pc.yellow(
-          '[testid-tagger] Skipped — tagger is gated behind --configuration=test ' +
+          '[testid-tagger] Skipped - tagger is gated behind --configuration=test ' +
             '(disable with testConfigurationOnly=false in config).\n'
         )
       );

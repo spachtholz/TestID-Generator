@@ -1,10 +1,4 @@
-/**
- * Element detection + element-type mapping (FR-1.2, FR-1.7).
- *
- * Decides which AST elements should be tagged and maps their tag name to a
- * canonical `element_type` short-name that is used in the generated
- * data-testid string.
- */
+// Element detection + shortType mapping (FR-1.2, FR-1.7).
 
 import { DEFAULT_IGNORE_TAGS, type TaggerConfig } from './config-loader.js';
 import {
@@ -13,16 +7,7 @@ import {
   type VisitedElement
 } from './template-parser.js';
 
-/**
- * Canonical short names used in the data-testid slot.
- *
- * The curated values below are what the tagger prefers for well-known tags
- * (PrimeNG, Angular Material, the common interactive natives). Since the
- * tagger now uses a denylist, *any* non-ignored tag produces a shortType —
- * when it's an unfamiliar tag, the slot is just the tag name (e.g. `div`,
- * `h1`, `article`). Therefore `ElementTypeShort` is a string with curated
- * suggestions, not a closed enum.
- */
+/** Curated suggestions, not a closed enum - unknown tags get a slug. */
 export type ElementTypeShort =
   | 'input'
   | 'button'
@@ -43,9 +28,8 @@ export type ElementTypeShort =
   | 'dataview'
   | 'form-field'
   | 'generic'
-  | (string & {}); // NOLINT — keep literal suggestions visible to callers
+  | (string & {}); // NOLINT - keep literal suggestions visible to callers
 
-/** Longer name written into the registry `element_type` field. */
 export type ElementTypeLong = string;
 
 export interface DetectedElement {
@@ -90,11 +74,8 @@ const NATIVE_MAP: Record<string, { short: ElementTypeShort; long: ElementTypeLon
   form: { short: 'form', long: 'native_form' }
 };
 
-/** Kebab-case slug for use in `data-testid` short-type / long-type strings. */
 function slugTag(tag: string): string {
-  // "p-dropdown" -> "p-dropdown"; "h1" -> "h1"; "my-custom-el" -> "my-custom-el"
-  // Linear single-pass scan — no regex backtracking, collapses any run of
-  // non-[a-z0-9] chars into a single hyphen and trims leading/trailing ones.
+  // linear scan, no regex backtracking (CodeQL flagged the prior regex version)
   let out = '';
   let pendingDash = false;
   let hasContent = false;
@@ -114,38 +95,26 @@ function slugTag(tag: string): string {
   return out || 'generic';
 }
 
-/**
- * Returns a `DetectedElement` for every element the tagger should emit a
- * testid for. The tagger uses a **denylist** approach (user-configurable via
- * {@link TaggerConfig.ignoreTags}): structural or non-rendered tags
- * (`ng-template`, `<script>`, `<style>`, etc.) are skipped, everything else
- * gets tagged. Known native / PrimeNG / Material tags keep their rich
- * short-type slug; unknown tags fall back to a generic slug derived from
- * their tag name so the testid is still stable and meaningful.
- */
+/** null = tag is in the denylist and should not receive a testid */
 export function detectElement(
   element: VisitedElement,
   config: TaggerConfig
 ): DetectedElement | null {
   const tag = getTagName(element).toLowerCase();
 
-  // 0. Denylist short-circuit: structural tags never get a testid.
   const ignored = new Set<string>([
     ...DEFAULT_IGNORE_TAGS.map((t) => t.toLowerCase()),
     ...(config.ignoreTags ?? []).map((t) => t.toLowerCase())
   ]);
   if (ignored.has(tag)) return null;
 
-  // 1. User-provided map overrides everything below. Lets the user name their
-  // own components (`app-user-menu` → `menu`) and also override native defaults
-  // if they want non-standard semantics.
+  // customTagMap wins over every built-in mapping
   const customMap = config.customTagMap ?? {};
   const customEntry = customMap[tag] ?? customMap[getTagName(element)];
   if (customEntry) {
     return { tag, shortType: customEntry.shortType, longType: customEntry.longType };
   }
 
-  // 2. Native — rich mapping (button/input get type-suffixed long names).
   if (NATIVE_MAP[tag]) {
     const base = NATIVE_MAP[tag];
     if (tag === 'input') {
@@ -161,22 +130,17 @@ export function detectElement(
     return { tag, shortType: base.short, longType: base.long };
   }
 
-  // 3. PrimeNG — curated mapping keeps readable shortType (dropdown/select/...).
   if (PRIMENG_MAP[tag]) {
     const base = PRIMENG_MAP[tag];
     return { tag, shortType: base.short, longType: base.long };
   }
 
-  // 4. Angular Material.
   if (MATERIAL_MAP[tag]) {
     const base = MATERIAL_MAP[tag];
     return { tag, shortType: base.short, longType: base.long };
   }
 
-  // 5. Everything else — tag it with a tag-derived slug so headings, labels,
-  // layout wrappers and custom components all get a stable testid. This is
-  // the behaviour the denylist design implies: cover everything except the
-  // structural tags listed above.
+  // fallback: tag-derived slug
   const slug = slugTag(tag);
   return {
     tag,

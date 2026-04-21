@@ -1,5 +1,5 @@
 {
-  "_comment": "Everything turned on — full registry fields, activity log, backups, strict retention, regenerated-entry splitting in the diff. Good starting point for a real project; trim the bits you don't need.",
+  "_comment": "Everything turned on - full registry fields, activity log, backups, strict retention, regenerated-entry splitting in the diff. Good starting point for a real project; trim the bits you don't need.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],

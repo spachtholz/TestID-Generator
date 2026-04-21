@@ -45,7 +45,7 @@ describe('loadLatestRegistry', () => {
   });
 });
 
-describe('parseRegistry — legacy compat', () => {
+describe('parseRegistry - legacy compat', () => {
   it('backfills missing entry.source as "generated"', () => {
     const legacyJson = {
       $schema: './testid-registry.schema.json',

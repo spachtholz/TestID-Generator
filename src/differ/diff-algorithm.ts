@@ -1,18 +1,5 @@
-/**
- * Diff algorithm (FR-3.1, FR-3.4).
- *
- * Given two registries (old + new), categorise every ID into one of:
- *   unchanged | added | removed | renamed | modified.
- *
- * Matching strategy:
- *   1. Exact ID match + same fingerprint  → unchanged.
- *   2. Exact ID match + different fingerprint → modified.
- *   3. Otherwise, for IDs that exist only in one side, try to find a
- *      best-match counterpart on the other side with similarity >= threshold.
- *      Matches are only accepted as 1:1 (the best-match-of-best-match rule).
- *      These become `renamed` pairs.
- *   4. Remaining unmatched IDs are `added` / `removed`.
- */
+// Diff two registries into unchanged/added/removed/renamed/modified (FR-3.x).
+// Rename detection uses best-of-best similarity matching with a threshold.
 
 import type { Registry, RegistryEntry } from '../registry/index.js';
 import { entrySimilarity } from './similarity.js';
@@ -84,16 +71,10 @@ export interface DiffResult {
 }
 
 export interface DiffOptions {
-  /** Minimum similarity for a rename (default 0.8, FR-3.4). */
+  /** min similarity for a rename, default 0.8 */
   threshold?: number;
-  /** Override generated_at for deterministic output. */
   now?: string;
-  /**
-   * When true, split `added` into two buckets: truly-new ids go to `added`,
-   * while ids whose `generation_history` shows at least one earlier appearance
-   * go to `regenerated`. When false (default), both groups stay in `added` —
-   * callers that do not care about regeneration see the original behavior.
-   */
+  /** split `added` into new vs regenerated (ids seen in earlier versions) */
   showRegenerated?: boolean;
 }
 
@@ -108,7 +89,7 @@ export function diffRegistries(
   const unchanged: UnchangedEntry[] = [];
   const modified: ModifiedEntry[] = [];
 
-  // Pass 1: exact-id overlap.
+  // exact-id overlap first
   const oldOnly = new Map<string, RegistryEntry>();
   const newOnly = new Map<string, RegistryEntry>();
   for (const [id, entry] of Object.entries(oldReg.entries)) {
@@ -133,8 +114,7 @@ export function diffRegistries(
     }
   }
 
-  // Pass 2: rename detection. For each old-only ID, find its best new-only
-  // candidate, and only accept 1:1 pairs.
+  // rename detection: best new-only candidate per old-only id, 1:1 only
   type Candidate = { oldId: string; newId: string; score: number };
   const candidates: Candidate[] = [];
   for (const [oldId, oldEntry] of oldOnly) {
@@ -148,7 +128,7 @@ export function diffRegistries(
     if (best) candidates.push(best);
   }
 
-  // Enforce 1:1 — if two old-ids map to the same new-id, keep the higher score.
+  // two old-ids -> same new-id: keep the higher score
   candidates.sort((a, b) => b.score - a.score);
   const takenOld = new Set<string>();
   const takenNew = new Set<string>();
@@ -166,8 +146,6 @@ export function diffRegistries(
     });
   }
 
-  // Everything left over is added / removed — with an optional split for
-  // regenerated ids (those whose history shows at least one earlier appearance).
   const showRegenerated = options.showRegenerated ?? false;
   const added: SimpleEntry[] = [];
   const regenerated: RegeneratedEntry[] = [];
@@ -223,8 +201,8 @@ export function diffRegistries(
 }
 
 /**
- * An id counts as regenerated if its `generation_history` — set by the
- * tagger's merge step — lists a version *earlier* than the current one. That
+ * An id counts as regenerated if its `generation_history` - set by the
+ * tagger's merge step - lists a version *earlier* than the current one. That
  * means the id was present before, disappeared, and came back. Entries whose
  * history is a single-element list are plain `added`.
  */

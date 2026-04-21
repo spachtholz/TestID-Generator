@@ -1,16 +1,6 @@
-/**
- * Registry serialization profiles.
- *
- * A config-side layer that decides which *optional* registry fields make it
- * into `testids.v{N}.json`. The schema contract (`registry.schema.ts`) stays
- * the same — we just strip optional keys and null-out semantic sub-fields
- * that the user opted out of.
- *
- * Design principle: profile resolution is pure and isolated. It runs *after*
- * `mergeEntriesWithHistory` has produced a full internal view, so history and
- * merge semantics are never poisoned by the profile — the profile is only an
- * output filter.
- */
+// Serialization profiles: minimal / standard / full. Applied after merge so
+// history data is never lost, only filtered out of the JSON.
+// TODO: ontology profile that keeps the fields the owl exporter needs
 
 import type { Registry, RegistryEntry, SemanticAttributes } from './schema.js';
 
@@ -37,7 +27,7 @@ export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'role'
 ];
 
-/** User-facing config shape (matches the Zod schema in tagger/config-loader.ts). */
+/** Matches the Zod schema in tagger/config-loader.ts. */
 export interface RegistryConfigInput {
   profile?: RegistryProfile;
   includeSemantics?: boolean;
@@ -47,7 +37,6 @@ export interface RegistryConfigInput {
   semanticFields?: SemanticFieldName[];
 }
 
-/** Fully-resolved options after merging profile defaults with sibling overrides. */
 export interface ResolvedRegistryOptions {
   includeSemantics: boolean;
   includeSource: boolean;
@@ -80,13 +69,6 @@ const PROFILE_DEFAULTS: Record<RegistryProfile, ResolvedRegistryOptions> = {
   }
 };
 
-/**
- * Resolve a user-provided registry config (with optional profile + overrides)
- * into a concrete {@link ResolvedRegistryOptions} the serializer can act on.
- *
- * Rule: profile sets the baseline; any sibling key overrides it. This lets
- * users say "standard profile but include history too" with two keys.
- */
 export function resolveRegistryOptions(
   input: RegistryConfigInput | undefined
 ): ResolvedRegistryOptions {
@@ -101,13 +83,6 @@ export function resolveRegistryOptions(
   };
 }
 
-/**
- * Strip optional registry fields per the resolved profile.
- *
- * Pure function: the input registry is not mutated. When a field group is
- * disabled, the corresponding key is omitted entirely (not nulled) so the
- * JSON stays compact and the loader's "missing = unset" semantics kick in.
- */
 export function applyRegistryProfile(
   registry: Registry,
   options: ResolvedRegistryOptions
@@ -123,10 +98,7 @@ function filterEntry(
   entry: RegistryEntry,
   options: ResolvedRegistryOptions
 ): RegistryEntry {
-  // Always keep schema-required fields. Semantic is required by the schema,
-  // so we emit it as an empty object when includeSemantics is off rather than
-  // dropping the key outright — that keeps the registry loadable by older
-  // consumers.
+  // semantic is required by the schema; emit {} when disabled
   const out: RegistryEntry = {
     component: entry.component,
     tag: entry.tag,

@@ -1,27 +1,7 @@
 #!/usr/bin/env node
-/**
- * Unified `testid` CLI dispatcher.
- *
- * Maps the invoked subcommand onto one of the four task-specific mains:
- *
- *   testid tag             → tagger/cli.ts      (alias: tagger)
- *   testid diff            → differ/cli.ts      (alias: differ)
- *   testid gen-locators    → locators/cli.ts    (aliases: locators, robot)
- *
- * Sub-CLI modules are imported lazily so `testid --help` and `testid --version`
- * do not pay the startup cost of `@angular/compiler`, `ajv` and `zod`. For a
- * typical setup this drops help-output latency from seconds to a few hundred
- * milliseconds.
- *
- * **argv forwarding contract.** Each sub-CLI calls `program.parse(argv)` with
- * Commander's default, which drops `argv[0]` (node) and `argv[1]` (script).
- * The dispatcher therefore reconstructs a two-element prefix
- * `['node', 'testid <sub>']` before appending the user's remaining args —
- * otherwise the sub-CLI would swallow the first real flag.
- *
- * The standalone bins (`testid-tagger`, `testid-differ`, ...) remain
- * published for backwards compatibility with existing scripts.
- */
+// Unified `testid` dispatcher. Sub-CLIs are imported lazily so --help/--version
+// don't load @angular/compiler + ajv + zod.
+// TODO: ontology subcommand once the owl exporter is reintroduced
 
 import pc from 'picocolors';
 import { VERSION } from './version.js';
@@ -30,23 +10,11 @@ import { runIfDirect } from './cli-common.js';
 type SubMain = (argv: readonly string[]) => Promise<number>;
 
 interface Subcommand {
-  /** Canonical name shown in help. Aliases resolve to this. */
   canonical: string;
   description: string;
-  /**
-   * Lazy loader for the sub-CLI's `main`. Each returns a fresh promise the
-   * first time it is called; subsequent calls could cache the resolved value,
-   * but the dispatcher runs a sub-main exactly once per process, so the
-   * simplest form is the right one.
-   */
   load: () => Promise<SubMain>;
 }
 
-/**
- * Canonical subcommands + aliases. One registry powers help rendering, alias
- * resolution, and dispatch, so there is only one place to touch when a new
- * subcommand is added.
- */
 export const SUBCOMMANDS: Record<string, Subcommand> = {
   tag: {
     canonical: 'tag',
@@ -121,7 +89,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
 
 function printGlobalHelp(stream: NodeJS.WriteStream = process.stdout): void {
   const lines: string[] = [];
-  lines.push(`${pc.bold('testid')} v${VERSION} — automate Angular data-testid generation`);
+  lines.push(`${pc.bold('testid')} v${VERSION} - automate Angular data-testid generation`);
   lines.push('');
   lines.push(pc.bold('Usage:'));
   lines.push('  testid <command> [options]');

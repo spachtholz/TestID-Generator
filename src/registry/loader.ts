@@ -1,9 +1,4 @@
-/**
- * Registry loader + validator (FR-2.5).
- *
- * Reads a registry JSON file from disk and validates its shape against the
- * JSON schema. Returns a strongly-typed `Registry` object on success.
- */
+// Registry loader + AJV validator (FR-2.5).
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -24,7 +19,7 @@ function getValidator(): ValidateFunction {
     // validate structurally (date-time format is then treated as a pass).
     addFormats(ajv);
   } catch {
-    /* ignore — ajv-formats optional */
+    /* ignore - ajv-formats optional */
   }
   cachedValidator = ajv.compile(registryJsonSchema);
   return cachedValidator;
@@ -60,7 +55,7 @@ export function parseRegistry(raw: string): Registry {
     if (entry.generation_history === undefined) {
       entry.generation_history = [entry.first_seen_version];
     }
-    // `last_generated_at` stays undefined for legacy entries — we cannot
+    // `last_generated_at` stays undefined for legacy entries - we cannot
     // invent a timestamp we didn't capture. New runs will set it next time
     // the entry is (re-)established.
   }

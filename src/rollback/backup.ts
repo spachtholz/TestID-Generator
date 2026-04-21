@@ -1,26 +1,13 @@
-/**
- * Pre-run template backups used by `testid rollback`.
- *
- * The tagger writes each template it is about to rewrite into a
- * `{registryDir}/backup.v{N}/` folder, side-by-side with a
- * `manifest.json` that records the absolute source path. A later
- * `testid rollback` reads the manifest of the newest `backup.v{N}/`,
- * copies each file back to its original location, and drops the
- * associated registry version.
- *
- * Backups mirror the relative path of the source file inside
- * `backup.v{N}/`, not the absolute one — that keeps the backup tree
- * portable across checkouts even though the manifest pins absolute
- * destinations for restoration.
- */
+// Pre-run backups consumed by `testid rollback`. Backup layout mirrors the
+// source path relative to cwd so the tree stays portable across checkouts.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 export interface BackupManifestEntry {
-  /** Absolute destination path at the time of the backup. */
+  /** absolute destination path at backup time */
   original: string;
-  /** Path inside the backup folder, relative to it. */
+  /** path inside the backup folder */
   backup: string;
 }
 
@@ -32,15 +19,11 @@ export interface BackupManifest {
 }
 
 export interface WriteBackupOptions {
-  /** Root registry directory; `backup.v{N}/` is written directly beneath it. */
   registryDir: string;
   version: number;
   cwd: string;
   generatedAt: string;
-  /**
-   * Absolute paths of every template the tagger is about to overwrite. Already
-   * un-modified files should not be passed in — they are not worth backing up.
-   */
+  /** absolute paths of templates about to be overwritten */
   sources: readonly string[];
 }
 
@@ -50,14 +33,6 @@ export interface WriteBackupResult {
   entries: BackupManifestEntry[];
 }
 
-/**
- * Copy every source into the backup tree and persist the manifest.
- *
- * The entry-level `backup` path is the source file path relative to `cwd` if
- * the source lives underneath it; otherwise we fall back to the absolute path
- * with path separators sanitized. The fallback covers edge cases — normally
- * every Angular template is inside the project root.
- */
 export async function writeBackup(
   options: WriteBackupOptions
 ): Promise<WriteBackupResult> {
@@ -93,11 +68,7 @@ function backupRelativePath(source: string, cwd: string): string {
   return sanitizeAbsolute(source);
 }
 
-/**
- * Produce a filesystem-safe representation of an absolute path we can put
- * inside `backup.v{N}/`. Drive letters keep their colon but the rest of the
- * path is converted to forward slashes and any prefix colon is dropped.
- */
+// fallback for sources outside cwd (rare). Drive letter -> `X_drive`, rest fwd-slashed.
 function sanitizeAbsolute(absolutePath: string): string {
   return absolutePath
     .replace(/^([A-Za-z]):/, '$1_drive')

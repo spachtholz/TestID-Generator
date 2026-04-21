@@ -1,11 +1,4 @@
-/**
- * Versioned registry writer (FR-2.2, FR-2.3, FR-2.4, FR-1.9, NFR-3).
- *
- * Writes `testids.v{N}.json` + `testids.latest.json` to the configured
- * artifact directory. Version counter is derived from the highest existing
- * `v{N}` file in the target directory (so parallel builds on clean working
- * copies pick up from where the last release left off).
- */
+// Versioned registry writer (FR-2.2 / 2.3 / 2.4).
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -25,10 +18,7 @@ export interface WriteResult {
 const VERSIONED_FILE_PATTERN = /^testids\.v(\d+)\.json$/;
 const LATEST_FILE_NAME = 'testids.latest.json';
 
-/**
- * Scan `dir` for files named `testids.v{N}.json` and return the highest N.
- * Returns 0 if no versioned files are present (so the caller writes v1 first).
- */
+/** Highest N in `testids.v{N}.json` under `dir`, or 0 if none. */
 export async function findHighestExistingVersion(dir: string): Promise<number> {
   let entries: string[];
   try {
@@ -54,14 +44,7 @@ export async function findHighestExistingVersion(dir: string): Promise<number> {
   return highest;
 }
 
-/**
- * Serialise a registry to a canonical, deterministic JSON string (NFR-3).
- * Keys are sorted alphabetically at every level so two equal registries always
- * produce byte-identical output, which CI pipelines rely on for change detection.
- *
- * When `serializationOptions` is provided, the registry first passes through
- * {@link applyRegistryProfile} so that user-disabled fields are stripped.
- */
+/** Canonical JSON (keys sorted at every level) so equal registries are byte-equal. */
 export function serializeRegistry(
   registry: Registry,
   serializationOptions?: ResolvedRegistryOptions
@@ -73,33 +56,14 @@ export function serializeRegistry(
 }
 
 export interface WriteRegistryOptions {
-  /** Directory to write into (will be created if missing). */
   dir: string;
-  /**
-   * If provided, use this as the registry version; otherwise highestExisting + 1.
-   * Useful when re-writing a registry in place.
-   */
+  /** override auto-increment */
   version?: number;
-  /**
-   * When > 0, delete all but the newest N `testids.vX.json` files after the
-   * new version is written. `testids.latest.json` is never touched by this
-   * policy. A value of 0 (default) keeps every version — backwards compatible.
-   */
+  /** keep only newest N versioned files; 0 = keep all */
   retention?: number;
-  /**
-   * Registry-profile options controlling which optional fields are serialized.
-   * When omitted, the full internal registry is written (backwards compatible).
-   */
   serializationOptions?: ResolvedRegistryOptions;
 }
 
-/**
- * Write a registry to `dir` using the next available version number.
- * The input registry's `version` field is overwritten with the chosen version.
- *
- * Also writes `testids.latest.json` as a byte-for-byte copy (we avoid symlinks
- * so the file works on Windows and in tarball artifacts).
- */
 export async function writeRegistry(
   registry: Registry,
   options: WriteRegistryOptions
@@ -126,12 +90,6 @@ export async function writeRegistry(
   return { versionedPath, latestPath, version };
 }
 
-/**
- * Keep only the newest `keep` versioned files in `dir`; delete the rest.
- * Never touches `testids.latest.json` or any file that doesn't match the
- * versioned pattern. Errors are swallowed silently: retention is a best-
- * effort cleanup, not a correctness guarantee.
- */
 async function pruneOldVersions(dir: string, keep: number): Promise<void> {
   let entries: string[];
   try {
@@ -159,13 +117,7 @@ async function pruneOldVersions(dir: string, keep: number): Promise<void> {
   );
 }
 
-/**
- * Simple-path merge for callers that do not care about long-term history.
- * Preserves `first_seen_version` from the previous latest registry and bumps
- * `last_seen_version`. For regeneration-aware merging that records
- * `last_generated_at` and `generation_history`, use `mergeEntriesWithHistory`
- * from `./merge.js` instead.
- */
+/** Simple merge. For history-aware merges, use mergeEntriesWithHistory. */
 export function mergeWithPrevious(
   previous: Registry | null,
   newEntries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>>,
@@ -189,14 +141,7 @@ export interface ManualOverrideEvent {
   previousVersion: number;
 }
 
-/**
- * Find entries whose source flipped from `generated` → `manual` between the
- * previous registry and the newly-merged one — i.e. a developer hand-pinned a
- * testid the tagger used to manage. These events surface as actionable stderr
- * warnings; the inverse direction (`manual` → `generated`) is intentionally
- * ignored because it represents the tagger reclaiming an id the user dropped,
- * which is not something a test author needs to act on.
- */
+/** Detect `generated` → `manual` flips; the reverse is not interesting. */
 export function detectManualOverrideEvents(
   previous: Registry | null,
   merged: Record<string, RegistryEntry>

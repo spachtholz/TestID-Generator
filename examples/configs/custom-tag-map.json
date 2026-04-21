@@ -1,5 +1,5 @@
 {
-  "_comment": "Map your own Angular components to nicer short-names in the generated testids. Without this map, <app-user-menu> becomes element_type 'dom_app-user-menu' — with it, 'menu'. customTagMap also overrides built-in classifications when you want non-default semantics.",
+  "_comment": "Map your own Angular components to nicer short-names in the generated testids. Without this map, <app-user-menu> becomes element_type 'dom_app-user-menu' - with it, 'menu'. customTagMap also overrides built-in classifications when you want non-default semantics.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],

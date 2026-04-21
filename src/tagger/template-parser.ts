@@ -1,12 +1,5 @@
-/**
- * Wrapper around `@angular/compiler`'s template parser (FR-1.5).
- *
- * We use the Angular compiler so that the new control-flow syntax
- * (`@if`, `@for`, `@switch`) is handled correctly on Angular 18+. Failure to
- * parse falls back to returning `null` so the caller can skip gracefully —
- * we never want to break a build because a template has a syntax error the
- * tagger can't handle.
- */
+// Thin wrapper around @angular/compiler's template parser (FR-1.5).
+// Uses the Angular parser so @if/@for/@switch work on v18+.
 
 import {
   parseTemplate,
@@ -124,7 +117,7 @@ function walkNode(node: TmplAstNode, visit: (node: VisitedElement) => void): voi
 }
 
 /* ---------------------------------------------------------------------- *
- * Narrow type guards — we treat these purely by their constructor name so
+ * Narrow type guards - we treat these purely by their constructor name so
  * a slight Angular minor-version difference doesn't break us.
  * ---------------------------------------------------------------------- */
 
@@ -228,7 +221,7 @@ export function findBoundAttribute(
 }
 
 /**
- * True if the element already carries a testid — either as a plain static
+ * True if the element already carries a testid - either as a plain static
  * attribute (`data-testid="..."`) OR as a runtime binding
  * (`[attr.data-testid]="..."`). Both forms must be respected by the tagger
  * so we don't override a manually-authored binding (FR-1.3-analog).
@@ -240,7 +233,7 @@ export function hasTestidBinding(element: VisitedElement): boolean {
 }
 
 /**
- * Return the element's immediate static text content — only returns a value
+ * Return the element's immediate static text content - only returns a value
  * if all children are plain `Text` nodes (no interpolation) per FR-1.6 rule 6.
  */
 export function getStaticTextContent(element: VisitedElement): string | null {
@@ -253,9 +246,9 @@ export function getStaticTextContent(element: VisitedElement): string | null {
     if (isText(child)) {
       out += child.value;
     } else if (isBoundText(child)) {
-      return null; // interpolation present — skip per FR-1.6
+      return null; // interpolation present - skip per FR-1.6
     } else if (isElementLike(child)) {
-      // element children are fine — we only care about our own text.
+      // element children are fine - we only care about our own text.
       continue;
     } else {
       return null;

@@ -1,8 +1,5 @@
-/**
- * Orchestrator for the Robot Framework locator generator. Reads a registry,
- * groups entries by component, renders one Python module per component, and
- * writes them to disk.
- */
+// Robot-Framework locator generator: registry in, one .py per component out.
+// TODO: ontology-aware locator mode (skip purely-structural testids)
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -13,6 +10,7 @@ import {
   filenameForComponent,
   renderLocatorModule
 } from './render.js';
+import { mergeLocatorModule } from './merge.js';
 import type {
   GenerateLocatorsOptions,
   GenerateLocatorsResult,
@@ -20,45 +18,80 @@ import type {
   LocatorModule
 } from './types.js';
 
+// mode wins > legacy overwrite > default merge
+function resolveMode(
+  options: GenerateLocatorsOptions
+): 'merge' | 'overwrite' | 'refuse' {
+  if (options.mode) return options.mode;
+  if (options.overwrite === true) return 'overwrite';
+  if (options.overwrite === false) return 'refuse';
+  return 'merge';
+}
+
 export async function generateLocators(
   registry: Registry,
   options: GenerateLocatorsOptions
 ): Promise<GenerateLocatorsResult> {
   const attributeName = options.attributeName ?? 'data-testid';
   const xpathPrefix = options.xpathPrefix ?? 'xpath:';
-  const overwrite = options.overwrite ?? true;
   const variableFormat = options.variableFormat ?? DEFAULT_VARIABLE_FORMAT;
+  const mode = resolveMode(options);
 
   const modules = buildModules(registry, attributeName, xpathPrefix, variableFormat);
 
   await fs.mkdir(options.outDir, { recursive: true });
-  // Use `wx` (write-exclusive) instead of a prior access() probe to keep the
-  // existence check atomic with the write — a pre-check would be a classic
-  // TOCTOU race if the user runs the generator twice in parallel.
-  const writeFlag = overwrite ? 'w' : 'wx';
   const writtenPaths: string[] = [];
   for (const mod of modules) {
     const target = path.join(options.outDir, mod.filename);
-    try {
-      await fs.writeFile(target, renderLocatorModule(mod), { encoding: 'utf8', flag: writeFlag });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new Error(
-          `Refusing to overwrite existing file ${target} (pass overwrite: true to force)`
-        );
-      }
-      throw err;
-    }
+    await writeModule({ target, mod, mode, attributeName });
     writtenPaths.push(target);
   }
   return { modules, writtenPaths };
 }
 
-/**
- * Fold every registry entry into its owning component's module. Components are
- * derived from the entry's `component` path: `app/features/order-list/order-list.component.html`
- * contributes to the `order-list` module.
- */
+async function writeModule(args: {
+  target: string;
+  mod: LocatorModule;
+  mode: 'merge' | 'overwrite' | 'refuse';
+  attributeName: string;
+}): Promise<void> {
+  const { target, mod, mode, attributeName } = args;
+
+  if (mode === 'refuse') {
+    // 'wx' = exclusive create, atomic existence check
+    try {
+      await fs.writeFile(target, renderLocatorModule(mod), { encoding: 'utf8', flag: 'wx' });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(
+          `Refusing to overwrite existing file ${target} (pass mode: 'merge' or 'overwrite' to proceed)`
+        );
+      }
+      throw err;
+    }
+    return;
+  }
+
+  if (mode === 'overwrite') {
+    await fs.writeFile(target, renderLocatorModule(mod), { encoding: 'utf8', flag: 'w' });
+    return;
+  }
+
+  // merge: read existing file and splice managed lines; missing file => fresh write
+  let existing: string | null;
+  try {
+    existing = await fs.readFile(target, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    existing = null;
+  }
+  const output =
+    existing === null
+      ? renderLocatorModule(mod)
+      : mergeLocatorModule({ existingSource: existing, freshModule: mod, attributeName });
+  await fs.writeFile(target, output, { encoding: 'utf8', flag: 'w' });
+}
+
 function buildModules(
   registry: Registry,
   attributeName: string,
@@ -92,7 +125,6 @@ function buildModules(
   return modules;
 }
 
-/** `a/b/order-list.component.html` → `order-list`. */
 function componentNameFromPath(componentPath: string): string {
   const base = componentPath.split(/[\\/]/).pop() ?? componentPath;
   return base

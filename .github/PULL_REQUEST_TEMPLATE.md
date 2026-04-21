@@ -22,7 +22,7 @@
 
 ## Testing
 
-<!-- How did you verify this? Unit tests, a local tagger run on a real Angular project, a manual diff check — whatever you did, mention it. -->
+<!-- How did you verify this? Unit tests, a local tagger run on a real Angular project, a manual diff check - whatever you did, mention it. -->
 
 - [ ] `npm test` passes
 - [ ] `npm run build` succeeds
@@ -33,7 +33,7 @@
 <!-- Only fill this out if your change affects how IDs are generated, named, or stored. -->
 
 - [ ] No change to generated IDs
-- [ ] IDs may shift — diff report attached or linked below
+- [ ] IDs may shift - diff report attached or linked below
 - [ ] Registry schema changed (describe the migration path)
 
 ## Related issues

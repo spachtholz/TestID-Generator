@@ -1,7 +1,7 @@
 /**
  * Shared types for the Robot Framework locator generator.
  *
- * Deliberately minimal — the registry is the single source of truth; these
+ * Deliberately minimal - the registry is the single source of truth; these
  * types only capture what the renderer needs to write `.py` files.
  */
 
@@ -10,7 +10,7 @@ export interface LocatorEntry {
   variable: string;
   /** Complete XPath selector string as it appears in the emitted file. */
   selector: string;
-  /** The raw testid — kept so the replacer can locate the line later. */
+  /** The raw testid - kept so the replacer can locate the line later. */
   testid: string;
 }
 
@@ -37,13 +37,23 @@ export interface GenerateLocatorsOptions {
    */
   attributeName?: string;
   /**
+   * @deprecated Use `mode` instead.
+   *
    * When true, existing files in `outDir` are overwritten. When false, an
-   * error is raised for any pre-existing target. Default: true.
+   * error is raised for any pre-existing target. If `mode` is also set, it
+   * wins.
    */
   overwrite?: boolean;
   /**
+   * Write-strategy for existing files:
+   *   - `merge` (default) - preserve manual lines, replace only `# testid-managed` lines
+   *   - `overwrite` - rewrite the file from scratch
+   *   - `refuse` - error if the target file already exists
+   */
+  mode?: 'merge' | 'overwrite' | 'refuse';
+  /**
    * Template for Python variable names. Placeholders: `{component}`,
-   * `{element}`, `{key}`, `{tag}`, `{hash}` — same vocabulary as the tagger's
+   * `{element}`, `{key}`, `{tag}`, `{hash}` - same vocabulary as the tagger's
    * `idFormat`. Default: `{component}_{element}_{key}` keeps names readable
    * even for hash-only testids.
    */

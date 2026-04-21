@@ -79,7 +79,7 @@ describe('renderActivityMarkdown', () => {
       manualOverrideIds: new Set()
     });
     const md = renderActivityMarkdown(report);
-    expect(md).toContain('# Tagger Activity — v3');
+    expect(md).toContain('# Tagger Activity - v3');
     expect(md).toContain('## New');
     expect(md).toContain('`new-one`');
     expect(md).not.toContain('## Regenerated');

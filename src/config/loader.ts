@@ -1,10 +1,4 @@
-/**
- * Unified config loader.
- *
- * Searches for (in order) `testid.config.{json,mjs,js,ts}` and, as a legacy
- * fallback, `testid-tagger.config.{json,mjs,js,ts}` — the legacy file is
- * interpreted as the `tagger` section of a unified config.
- */
+// Loads `testid.config.*`, falls back to legacy `testid-tagger.config.*`.
 
 import { pathToFileURL } from 'node:url';
 import * as path from 'node:path';
@@ -41,7 +35,6 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** Return the first matching filename under `searchDir`, or null. */
 async function findFirst(
   searchDir: string,
   candidates: readonly string[]
@@ -72,29 +65,13 @@ async function readRaw(absPath: string): Promise<unknown> {
   return mod.default ?? mod.config ?? mod;
 }
 
-/**
- * Detect whether a raw object is a legacy tagger-only config (root-level
- * tagger fields) vs the new unified shape (top-level `tagger`/`differ`/
- * `locators`). We just check for any of the three section keys; anything
- * else is treated as legacy and wrapped.
- */
 function looksUnified(raw: unknown): boolean {
   if (!raw || typeof raw !== 'object') return false;
   const keys = Object.keys(raw as Record<string, unknown>);
   return keys.some((k) => k === 'tagger' || k === 'differ' || k === 'locators');
 }
 
-/**
- * Load and validate the unified config. Search order:
- *
- *   1. explicit `configPath` (if given)
- *   2. `testid.config.*` in cwd
- *   3. legacy `testid-tagger.config.*` (wrapped into `{tagger: raw}`)
- *   4. all defaults
- *
- * When a legacy file is used, `isLegacy: true` is returned so the caller can
- * print a one-time deprecation warning.
- */
+/** Search order: explicit path > testid.config.* > testid-tagger.config.* > defaults. */
 export async function loadTestidConfig(
   configPath?: string,
   cwd: string = process.cwd()
@@ -104,7 +81,6 @@ export async function loadTestidConfig(
 
   if (configPath) {
     absPath = path.resolve(cwd, configPath);
-    // Legacy file explicitly passed? Detect by filename.
     const base = path.basename(absPath);
     if (LEGACY_TAGGER_CONFIG_FILENAMES.some((n) => n === base)) {
       isLegacy = true;
@@ -127,9 +103,6 @@ export async function loadTestidConfig(
   }
 
   const raw = await readRaw(absPath);
-
-  // If the file was found via legacy search OR the content has no known
-  // section keys, treat the entire object as the tagger section.
   const wrapped = isLegacy || !looksUnified(raw) ? { tagger: raw } : raw;
 
   const parsed = TestidConfigSchema.parse(wrapped);

@@ -66,7 +66,7 @@ describe('loadTestidConfig', () => {
   });
 
   it('wraps a bare config that has no known section keys', async () => {
-    // Legacy-looking content in a non-legacy filename — still wrapped.
+    // Legacy-looking content in a non-legacy filename - still wrapped.
     await fs.writeFile(
       path.join(dir, 'testid.config.json'),
       JSON.stringify({ rootDir: 'implicit-src', hashLength: 5 })

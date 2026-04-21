@@ -1,10 +1,8 @@
 # Quick Start
 
-Five minutes from zero to your first tagged templates.
+## 1. Create a config
 
-## 1. Drop in a config
-
-Create `testid.config.json` in the root of your Angular project:
+Create `testid.config.json` in your project root:
 
 ```json
 {
@@ -17,9 +15,9 @@ Create `testid.config.json` in the root of your Angular project:
 }
 ```
 
-That's a minimal setup — we'll cover the rest in [Configuration](Configuration).
+See [Configuration](Configuration) for all options.
 
-> **Legacy note:** Projects on v0.3.x used `testid-tagger.config.json` with root-level fields. That file still works — the tagger maps it into the new `tagger` section automatically. No migration is required to upgrade.
+Projects on v0.3.x that use `testid-tagger.config.json` with root-level fields continue to work - the loader wraps the legacy file into the new `tagger` section automatically.
 
 ## 2. Tag your templates
 
@@ -27,11 +25,9 @@ That's a minimal setup — we'll cover the rest in [Configuration](Configuration
 testid tag --verbose
 ```
 
-The tagger walks through your templates, adds `data-testid` attributes where they make sense, and writes the first registry snapshot to `testids.v1.json`.
+Adds `data-testid` attributes where applicable and writes `testids.v1.json`.
 
-## 3. Diff after UI changes
-
-Made some changes? Run the tagger again, then compare:
+## 3. Diff between versions
 
 ```bash
 testid tag
@@ -40,7 +36,7 @@ testid diff test-artifacts/testids/testids.v1.json \
             --out-dir test-artifacts/testids
 ```
 
-You'll get a Markdown report listing what's new, gone, renamed, or modified — perfect for a PR review.
+Produces a Markdown and JSON report listing `added`, `removed`, `renamed`, and `modified` entries.
 
 ## 4. Generate Robot Framework locators
 
@@ -49,16 +45,17 @@ testid gen-locators test-artifacts/testids/testids.latest.json \
                     --out-dir tests/locators
 ```
 
-One Python file per component, ready to import into your test suite.
+Writes one Python module per component.
 
-## Subcommands at a glance
+## Subcommands
 
 ```
 testid <command> [options]
 
   tag             Add data-testid attributes to Angular templates
-  diff            Compare two registry JSON files and write a report
+  diff            Compare two registry JSON files
   gen-locators    Generate Robot Framework Python modules
+  rollback        Undo the last tag run
 ```
 
-Each one has its own flags — run `testid <command> --help` for the full list.
+Run `testid <command> --help` for command-specific flags.

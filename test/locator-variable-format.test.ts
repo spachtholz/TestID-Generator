@@ -92,7 +92,7 @@ describe('renderVariableName', () => {
   it('falls back to testid when template renders empty', () => {
     const e = entry();
     // `{unknown}` is not substituted; after sanitation the raw "{unknown}"
-    // becomes "unknown", which is non-empty — so sanitation must handle the
+    // becomes "unknown", which is non-empty - so sanitation must handle the
     // other fallback for truly-empty inputs. Use an explicit empty-ish template.
     const name = renderVariableName(e, 'real-testid-123', '{component}');
     // Should not be empty, should be orderList.

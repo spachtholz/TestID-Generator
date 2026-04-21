@@ -1,16 +1,4 @@
-/**
- * Restore the state a tagger run left behind.
- *
- * `rollbackLatestRun` is the workhorse of the `testid rollback` CLI: it finds
- * the newest `backup.v{N}/manifest.json` under the registry directory, copies
- * every archived file back to its original location, and deletes both the
- * backup tree and the associated `testids.v{N}.json`. If a previous version
- * exists, its registry is copied into `testids.latest.json`; otherwise the
- * latest marker is removed so a fresh tagger run starts clean.
- *
- * The function never touches files not listed in the manifest — it is a
- * surgical undo of the last run, not a repo-wide reset.
- */
+// Undo the last tagger run by replaying the newest backup.v{N}/manifest.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -20,9 +8,8 @@ const VERSIONED_BACKUP_PATTERN = /^backup\.v(\d+)$/;
 const VERSIONED_REGISTRY_PATTERN = /^testids\.v(\d+)\.json$/;
 
 export interface RollbackOptions {
-  /** Registry directory that holds `backup.v{N}/` and `testids.v{N}.json`. */
   registryDir: string;
-  /** When true, compute what would happen but change nothing. Default: false. */
+  /** dry run: plan but don't touch disk */
   dryRun?: boolean;
 }
 
@@ -162,7 +149,7 @@ async function previousVersion(
     const version = Number.parseInt(match[1], 10);
     if (!Number.isFinite(version)) continue;
     // During a real rollback the current version's file is deleted before we
-    // look — but in dry-run mode it still exists, so exclude it explicitly.
+    // look - but in dry-run mode it still exists, so exclude it explicitly.
     if (dryRun && version === removedVersion) continue;
     if (version < removedVersion && (best === null || version > best)) {
       best = version;

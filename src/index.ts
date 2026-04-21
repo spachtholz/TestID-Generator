@@ -1,14 +1,6 @@
-/**
- * Public library entry for `@testid/automation`.
- *
- * Re-exports every programmatic API from the three sub-modules so external
- * consumers can `import { runTagger, diffRegistries, ... } from '@testid/automation'`
- * without needing to know the internal folder layout.
- *
- * If you only need the CLI, you don't need this file — the `bin` entries in
- * package.json (`testid-tagger`, `testid-differ`) are the intended UX for
- * most users.
- */
+// Public library entry. Re-exports the programmatic APIs - if you only need
+// the CLI, use the `testid` bin instead.
+// TODO: re-export ontology helpers when owl exporter is brought back
 
 export { VERSION } from './version.js';
 

@@ -25,7 +25,7 @@ describe('tagTemplateSource', () => {
 
     expect(Object.keys(out.entries)).toContain('login-form__input--email');
     expect(Object.keys(out.entries)).toContain('login-form__input--password');
-    // "Sign in" button — FR-1.6 rule 6 (text content)
+    // "Sign in" button - FR-1.6 rule 6 (text content)
     expect(Object.keys(out.entries)).toContain('login-form__button--sign-in');
     // Tagged template must contain the injected attribute
     expect(out.tagged).toContain(`data-testid="login-form__input--email"`);
@@ -154,7 +154,7 @@ describe('tagTemplateSource', () => {
   });
 });
 
-describe('runTagger — verbose + override warnings', () => {
+describe('runTagger - verbose + override warnings', () => {
   let workDir = '';
   const config = { ...DEFAULT_CONFIG, testConfigurationOnly: false, rootDir: 'src' };
 
@@ -216,7 +216,7 @@ describe('runTagger — verbose + override warnings', () => {
 
   it('keeps source=generated when the tagger re-encounters its own id', async () => {
     // After v1, the template will contain the tagger's auto-id. On v2, the
-    // tagger must NOT treat its own carried-over id as a manual override —
+    // tagger must NOT treat its own carried-over id as a manual override -
     // otherwise every second run would raise spurious warnings.
     await fs.writeFile(
       path.join(workDir, 'src', 'hello.component.html'),
@@ -259,7 +259,7 @@ describe('runTagger — verbose + override warnings', () => {
     const v1 = await loadLatestRegistry(path.join(workDir, 'test-artifacts/testids'));
     const autoId = Object.keys(v1!.entries)[0]!;
 
-    // v2: flip happens — activity log must record exactly one manual-override.
+    // v2: flip happens - activity log must record exactly one manual-override.
     await fs.writeFile(
       path.join(workDir, 'src', 'hello.component.html'),
       `<button aria-label="Send order now" data-testid="${autoId}" type="submit">Send</button>`
@@ -270,7 +270,7 @@ describe('runTagger — verbose + override warnings', () => {
     expect(v2Overrides).toHaveLength(1);
     expect(v2Overrides[0].id).toBe(autoId);
 
-    // v3: no change at all — the entry is still manual but not a *new* flip.
+    // v3: no change at all - the entry is still manual but not a *new* flip.
     // The activity log must classify it as carried-over, not manual-override.
     const v3Result = await runTagger(cfgWithActivity, { cwd: workDir });
     const v3Activity = JSON.parse(await fs.readFile(v3Result.activityJsonPath!, 'utf8'));

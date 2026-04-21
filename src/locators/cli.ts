@@ -38,10 +38,14 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       '--variable-format <template>',
       'Python variable-name template. Placeholders: {component}, {element}, {key}, {tag}, {hash}. Default: {component}_{element}_{key}'
     )
+    .option(
+      '--mode <mode>',
+      'Write strategy: merge (default, preserves manual lines), overwrite (rewrite from scratch), refuse (fail if file exists)'
+    )
     .option('--config <path>', 'Path to testid.config.json')
     .option(
       '--no-overwrite',
-      'Refuse to overwrite pre-existing target files. Default: overwrite.'
+      'Deprecated alias for --mode refuse.'
     )
     .option('--quiet', 'Suppress normal stdout chatter', false)
     .allowExcessArguments(false)
@@ -63,6 +67,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     attributeName?: string;
     xpathPrefix?: string;
     variableFormat?: string;
+    mode?: string;
     config?: string;
     overwrite: boolean;
     quiet?: boolean;
@@ -76,6 +81,38 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   const configResult = await loadTestidConfig(opts.config);
   const locatorsConfig = configResult.config.locators;
   const taggerConfig = configResult.config.tagger;
+
+  // Resolve mode: explicit --mode > --no-overwrite (deprecated alias) >
+  // config.mode > legacy config.overwrite > default 'merge'.
+  let mode: 'merge' | 'overwrite' | 'refuse';
+  if (opts.mode !== undefined) {
+    if (opts.mode !== 'merge' && opts.mode !== 'overwrite' && opts.mode !== 'refuse') {
+      process.stderr.write(
+        pc.red(`[testid-gen-locators] Invalid --mode "${opts.mode}". Valid: merge, overwrite, refuse.\n`)
+      );
+      return 2;
+    }
+    mode = opts.mode;
+  } else if (opts.overwrite === false) {
+    // commander exposes --no-overwrite as { overwrite: false }
+    process.stderr.write(
+      pc.yellow('[testid-gen-locators] --no-overwrite is deprecated; use --mode refuse instead.\n')
+    );
+    mode = 'refuse';
+  } else {
+    mode = locatorsConfig.mode;
+    if (locatorsConfig.overwrite !== undefined && opts.mode === undefined) {
+      // Config has the legacy `overwrite` field; let the generator map it if
+      // the newer `mode` wasn't also set in the config.
+      // (schema.ts leaves `mode` at its default 'merge' when unset, so we
+      // need an explicit check on overwrite to honour legacy configs.)
+      if (locatorsConfig.overwrite === true && locatorsConfig.mode === 'merge') {
+        mode = 'overwrite';
+      } else if (locatorsConfig.overwrite === false && locatorsConfig.mode === 'merge') {
+        mode = 'refuse';
+      }
+    }
+  }
 
   let registry;
   try {
@@ -92,7 +129,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       outDir: opts.outDir,
       attributeName: opts.attributeName ?? locatorsConfig.attributeName ?? taggerConfig.attributeName,
       xpathPrefix: opts.xpathPrefix ?? locatorsConfig.xpathPrefix,
-      overwrite: opts.overwrite,
+      mode,
       variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat
     });
     if (!opts.quiet) {

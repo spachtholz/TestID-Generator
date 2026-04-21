@@ -1,11 +1,11 @@
 # Registry Format
 
-Every tagger run writes two files into `registryDir`:
+Each tagger run writes two files into `registryDir`:
 
-- **`testids.v{N}.json`** — an immutable snapshot, written once and never touched again.
-- **`testids.latest.json`** — a byte-identical copy of the newest snapshot, so tools that just want "the current state" always know where to look.
+- **`testids.v{N}.json`** - immutable snapshot for registry version N.
+- **`testids.latest.json`** - byte-identical copy of the newest snapshot.
 
-## What an entry looks like
+## Entry shape
 
 ```json
 "order-list__table--auftragsliste": {
@@ -28,24 +28,24 @@ Every tagger run writes two files into `registryDir`:
 }
 ```
 
-## What each field means
+## Fields
 
 | Field | Always present? | Meaning |
 |---|---|---|
 | `component` | ✅ | Path to the template, relative to the project root. |
-| `tag` | ✅ | The HTML or PrimeNG tag this ID belongs to. |
-| `element_type` | ✅ | A coarse classification — `primeng_table`, `input`, `button`, and so on. |
-| `fingerprint` | ✅ | A deterministic signature built from the tag and its semantics. Stable across runs. |
-| `semantic` | ✅ (may be `{}`) | Whatever semantic hints the tagger extracted — aria-label, formcontrolname, placeholder, text, type. The sub-keys are controlled by `tagger.registry.semanticFields` in the config. |
-| `first_seen_version` | ✅ | The first registry version this entry appeared in. |
-| `last_seen_version` | ✅ | The most recent registry version it showed up in. |
-| `source` | profile-gated | `"generated"` if the tagger wrote it, `"manual"` if a human did. |
-| `dynamic_children` | profile-gated | Overlay / pop-up selector pattern (PrimeNG dropdowns, calendars, …). |
-| `last_generated_at` | profile-gated | ISO timestamp of the last time it was (re)generated. |
-| `generation_history` | profile-gated | The list of versions in which this entry was created or recreated. |
+| `tag` | ✅ | Original HTML or PrimeNG tag name. |
+| `element_type` | ✅ | Classification (`primeng_table`, `input`, `button`, …). |
+| `fingerprint` | ✅ | Deterministic signature built from the tag and its semantics. |
+| `semantic` | ✅ (may be `{}`) | Semantic attributes extracted from the element. Sub-keys controlled by `tagger.registry.semanticFields`. |
+| `first_seen_version` | ✅ | Registry version in which the entry first appeared. |
+| `last_seen_version` | ✅ | Most recent registry version in which the entry was seen. |
+| `source` | profile-gated | `"generated"` (tagger) or `"manual"` (human-pinned). |
+| `dynamic_children` | profile-gated | Overlay/pop-up selector pattern for PrimeNG dropdowns, calendars, etc. |
+| `last_generated_at` | profile-gated | ISO timestamp of the last (re-)generation. |
+| `generation_history` | profile-gated | Versions in which the entry was created or recreated. |
 
-Which optional fields appear depends on your `tagger.registry.profile` (`minimal` / `standard` / `full`) and any per-field overrides. See the [Configuration](Configuration) page for the full matrix.
+Optional fields are controlled by `tagger.registry.profile` (`minimal` / `standard` / `full`) plus per-field overrides. See [Configuration](Configuration) for the profile matrix.
 
-## Check it into git
+## Version control
 
-The registry belongs in your repo. When someone opens a PR that touches the UI, the testid diff shows up right next to the template diff — no surprises, no "why did my tests break" moments three days later.
+The registry is intended to be committed to git. UI changes then show up in PRs alongside the template diff, and the generated diff report can be attached as a PR artifact for review.

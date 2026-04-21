@@ -1,15 +1,4 @@
-/**
- * Fingerprint extraction (FR-1.6, FR-1.9).
- *
- * Walks the FR-1.6 priority list and returns both:
- *   - the "primary" semantic key (the first field that produced a value), and
- *   - the full, deterministic fingerprint string used for hashing /
- *     registry storage.
- *
- * All values are trimmed; whitespace runs collapsed to a single space.
- * Order is stable and derived from tag + attribute values only (no file
- * paths, no timestamps, no random bytes — see NFR-3).
- */
+// Fingerprint extraction (FR-1.6, FR-1.9). Deterministic: no paths, no times.
 
 import {
   findAttribute,
@@ -119,7 +108,7 @@ export function generateFingerprint(element: VisitedElement): Fingerprint {
   }
 
   // Build deterministic fingerprint: tag|field=value|field=value…
-  // We include every present field (primary or not) — order is fixed by PRIORITY.
+  // We include every present field (primary or not) - order is fixed by PRIORITY.
   const parts: string[] = [tag];
   for (const key of PRIORITY) {
     const v = extract(element, key);

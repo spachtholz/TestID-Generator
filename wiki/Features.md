@@ -2,48 +2,44 @@
 
 ## Deterministic tagging
 
-Testids aren't made up on the fly — they're derived from what the element actually is. The tagger looks at `aria-label` first, then `placeholder`, then visible text, and falls back to the element's position in the tag only when nothing else is there. Same UI in, same IDs out. Every single build.
+IDs are derived from the element's semantic attributes. The tagger checks, in order: `formControlName`, `name`, `routerLink`, `aria-label`, `placeholder`, visible text, `type`, `role`. It falls back to the tag name only when none of these are present. Given the same input, every run produces identical IDs.
 
-## PrimeNG out of the box
+## PrimeNG and Angular Material support
 
-Overlays, calendars, dropdowns, and tables get an extra `dynamic_children` descriptor, so your tests can reach into those pop-up DOM fragments without having to guess CSS classes every time PrimeNG ships a new minor version.
+Native HTML, PrimeNG and Angular Material components are classified into short element types (`dropdown`, `calendar`, `table`, etc.). Overlay-based PrimeNG components (`p-dropdown`, `p-datepicker`, `p-multiselect`, …) additionally receive a `dynamic_children` selector pattern for addressing their rendered children.
 
-## A versioned registry
+## Versioned registry
 
-Every run archives the complete ID set as `testids.v{N}.json`, and keeps `testids.latest.json` pointing at the newest one. Each entry remembers when it first appeared, when it was last seen, and whether it's been regenerated after a prior removal.
+Each run writes `testids.v{N}.json` and updates `testids.latest.json` (byte-identical copy of the newest version). Every entry tracks `first_seen_version`, `last_seen_version`, and optionally `last_generated_at` plus `generation_history` for regeneration events.
 
-## An audit trail you'll actually want
+## Source and timestamp tracking
 
-Every entry carries a `source` (`"generated"` or `"manual"`) and a `last_generated_at` timestamp, so you can tell at a glance which IDs the tagger owns, which ones someone wrote by hand, and when something that was deleted quietly came back.
+Each entry records a `source` (`generated` or `manual`) and a `last_generated_at` timestamp. When a testid transitions from `generated` to `manual` (a developer pinned the value by hand), the tagger emits a one-time stderr warning in the version where the transition occurred.
 
-## Diffs that make sense in a PR
+## Diff reports
 
-`testid-differ` groups changes into `unchanged`, `added`, `removed`, `renamed`, `modified`, and — optionally — `regenerated`. You get Markdown for human review and JSON for anything you want to automate on top.
+`testid diff` categorises changes into `unchanged`, `added`, `removed`, `renamed`, `modified`, and `regenerated`. Output formats: Markdown, JSON, or both, configurable per run.
 
-## One-time override warnings
+## Robot Framework locator generator
 
-If a developer overrides an auto-generated ID with a manual one, you get a single `[testid-tagger] override: …` notice on stderr during the next run — just enough to catch it in review, not so much that it becomes noise.
+`testid gen-locators` emits one Python module per component, containing XPath constants tagged with a `# testid-managed` marker. Variable names are derived from a configurable template (`{component}_{element}_{key}` by default), so names stay readable even when the testids are hash-only.
 
-## Robot Framework locators, for free
+## Configurable ID format
 
-`testid-gen-locators` writes one Python file per component, full of camelCase constants and XPath selectors that plug straight into a Selenium Library suite.
+The `idFormat` template accepts the placeholders `{component}`, `{element}`, `{key}`, `{tag}`, `{hash}`, and `{hash:-}`. The target attribute name (`data-testid`, `data-cy`, …) and hash algorithm (`sha256`, `sha1`, `md5`) are also configurable.
 
-## Naming, your way
+## Rollback
 
-The `idFormat` template lets you shape the generated names however you want: use `{component}`, `{element}`, `{key}`, `{hash:-}`, mix in static text, swap `data-testid` for `data-cy`. Whatever your house style is, the tagger can match it.
+Before overwriting templates, the tagger writes the original file into `backup.v{N}/` along with a manifest. `testid rollback` restores the previous state: templates are copied back, the latest registry version is dropped, and `testids.latest.json` is rewound. Gated by `writeBackups: true` (default).
 
-## Safe to experiment
+## Selective runs
 
-Before every run, the templates touched by the tagger get copied into `backup.v{N}/`. If you don't like what happened, `testid rollback` puts everything back and rewinds the registry by one version.
+The `--files` flag restricts a tagger run to specific templates or glob patterns, overriding `config.include` for that invocation.
 
-## Tag just the parts you care about
+## Custom tag mapping
 
-`testid tag --files src/app/features/order-list/...` limits a run to a handful of files or a glob — no need to touch the config just to test something out.
+`customTagMap` maps custom tag names to explicit `shortType` / `longType` values. Useful for your own Angular components (`<app-user-menu>` → `menu`) and as an override for built-in classifications.
 
-## Teach it about your own components
+## CI integration
 
-`customTagMap` lets you tell the tagger that `<app-user-menu>` should show up as `menu` in the testid, not as the full component name. Small touch, much cleaner IDs.
-
-## CI-friendly by default
-
-Deterministic output, canonical JSON serialization, documented exit codes, and no surprise network calls. Drop it into any pipeline without second-guessing it.
+Deterministic output, canonical JSON serialisation, documented exit codes, no network calls at runtime. Compatible with any standard CI pipeline.

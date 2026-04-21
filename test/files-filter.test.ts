@@ -26,7 +26,7 @@ afterEach(async () => {
   await fs.rm(workDir, { recursive: true, force: true });
 });
 
-describe('runTagger — files option', () => {
+describe('runTagger - files option', () => {
   it('without --files, tags every template matched by config.include', async () => {
     const result = await runTagger(config, { cwd: workDir });
     expect(result.filesTagged).toBe(2);

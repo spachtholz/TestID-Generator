@@ -1,12 +1,5 @@
 #!/usr/bin/env node
-/**
- * testid-rollback CLI.
- *
- * Undoes the most recent `testid tag` run by restoring the files archived in
- * the newest `backup.v{N}/` tree, deleting the corresponding `testids.v{N}.json`,
- * and rewinding `testids.latest.json` to the prior version. If no backup
- * exists, the command reports that and exits successfully (nothing to do).
- */
+// testid-rollback CLI. Undoes the last tagger run via the newest backup.v{N}.
 
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -34,7 +27,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
         '  $ testid rollback',
         '  $ testid rollback --dry-run',
         '',
-        'Rollback requires that the previous tagger run wrote a backup —',
+        'Rollback requires that the previous tagger run wrote a backup -',
         'i.e. writeBackups was not disabled via config or `tag --no-backup`.',
         ''
       ].join('\n')
@@ -55,7 +48,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     if (result.rolledBackVersion === null) {
       if (!opts.quiet) {
         process.stdout.write(
-          pc.yellow(`[testid-rollback] no backup found under ${registryDir} — nothing to undo.\n`)
+          pc.yellow(`[testid-rollback] no backup found under ${registryDir} - nothing to undo.\n`)
         );
       }
       return 0;

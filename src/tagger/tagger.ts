@@ -1,15 +1,5 @@
-/**
- * Main tagger orchestrator (FR-1.1, FR-1.3, FR-1.5, FR-1.8, FR-1.9, FR-1.10).
- *
- * Responsibilities:
- *   1. Discover all `*.component.html` templates under rootDir.
- *   2. Parse each template, walk the AST, decide which elements to tag.
- *   3. Generate deterministic IDs, respecting any pre-existing `data-testid`.
- *   4. Rewrite templates in-place (or into `--output-dir`) using a
- *      source-offset-based insertion so whitespace, interpolations and
- *      Angular control-flow syntax stay untouched.
- *   5. Assemble a registry and delegate persistence to @testid/registry.
- */
+// Main tagger orchestrator (FR-1.x). Discover templates -> parse -> decide
+// which elements to tag -> generate IDs -> rewrite -> persist registry.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -56,38 +46,18 @@ import {
 } from './id-generator.js';
 
 export interface TaggerRunOptions {
-  /** Base directory relative to which paths resolve (default: cwd). */
   cwd?: string;
-  /** Overrides `config.registryDir` when set. */
   registryDir?: string;
-  /** When set, write tagged templates to this dir instead of overwriting source. */
+  /** write tagged templates here instead of overwriting source */
   outputDir?: string;
-  /** When true, do not write anything to disk. */
   dryRun?: boolean;
-  /**
-   * When `--configuration=test` is set, the tagger runs even if
-   * `config.testConfigurationOnly` is true. Otherwise we no-op (FR-1.10).
-   */
+  /** --configuration=test bypasses testConfigurationOnly (FR-1.10) */
   configuration?: string;
-  /** Override timestamp for deterministic tests. */
   now?: string;
-  /**
-   * When true, log a line per newly-tagged testid to stderr. The override-flip
-   * warning is always emitted regardless of this flag, because it signals a
-   * semantic change that callers should act on.
-   */
   verbose?: boolean;
-  /**
-   * Inject a custom stderr writer. Defaults to `process.stderr.write`. Used by
-   * tests to capture output without spawning child processes.
-   */
+  /** injectable for tests */
   stderr?: (chunk: string) => void;
-  /**
-   * Restrict the run to specific templates — glob patterns or concrete file
-   * paths, either relative to `cwd` or absolute. When set, this fully
-   * overrides `config.include` for the current run (the `ignore` patterns
-   * still apply). Useful for "re-tag just this component" workflows.
-   */
+  /** glob/path overrides; replaces config.include for this run */
   files?: readonly string[];
 }
 
@@ -101,13 +71,10 @@ export interface TaggerRunResult {
   dryRun: boolean;
   registryPath: string | null;
   latestPath: string | null;
-  /** Path to `activity.v{N}.md`, if the activity log was written. */
   activityMarkdownPath: string | null;
-  /** Path to `activity.v{N}.json`, if the activity log was written. */
   activityJsonPath: string | null;
 }
 
-/** Entry point — tag all templates, write registry, return summary. */
 export async function runTagger(
   config: TaggerConfig,
   options: TaggerRunOptions = {}
@@ -152,9 +119,8 @@ export async function runTagger(
     ? path.resolve(cwd, options.outputDir)
     : null;
 
-  // Pass 1: tag every template in memory. We collect entries and pending
-  // writes but defer disk I/O until after the backup step so a failure in
-  // one file doesn't leave the repo with half the templates rewritten.
+  // tag everything in memory first so a partial failure doesn't leave
+  // half the templates rewritten
   interface PendingWrite {
     source: string;
     targetPath: string;
@@ -186,9 +152,7 @@ export async function runTagger(
     }
   }
 
-  // Pass 2: write pre-run backups (only for files that are about to change
-  // AND only when the tagger is writing in-place — there is nothing to undo
-  // when the tagger writes into a separate --output-dir).
+  // pre-run backups, only when writing in-place (not for --output-dir)
   const writeBackups = !dryRun && config.writeBackups !== false && outputDir === null;
   if (writeBackups && pendingWrites.length > 0) {
     await writeBackup({
@@ -200,7 +164,6 @@ export async function runTagger(
     });
   }
 
-  // Pass 3: actually rewrite the templates.
   if (!dryRun) {
     for (const write of pendingWrites) {
       await fs.mkdir(path.dirname(write.targetPath), { recursive: true });
@@ -226,11 +189,7 @@ export async function runTagger(
     logPerEntryActivity(writeStderr, dispositions, config.attributeName);
   }
 
-  // A manual override is a per-run event: an id whose source was `generated`
-  // in the previous version and is `manual` now. Both the activity log and
-  // the stderr warning share this single source of truth, so an entry that
-  // stays pinned across many runs surfaces as `manual-override` exactly once
-  // — in the version where the transition occurred.
+  // override event = generated -> manual flip; surfaces once per transition
   const overrideEvents = detectManualOverrideEvents(previous, registry.entries);
   const overrideIds = new Set(overrideEvents.map((f) => f.id));
   for (const event of overrideEvents) {
@@ -353,7 +312,7 @@ function logPerEntryActivity(
       writeStderr(`${prefix}+ ${info.entry.component} ${attr}\n`);
     } else if (info.disposition === 'regenerated') {
       writeStderr(
-        `${prefix}~ ${info.entry.component} ${attr} (regenerated — last seen in v${info.previousVersion})\n`
+        `${prefix}~ ${info.entry.component} ${attr} (regenerated - last seen in v${info.previousVersion})\n`
       );
     }
   }
@@ -389,7 +348,7 @@ interface TagCandidate {
 }
 
 /**
- * Tag a single template source string. Never touches Angular syntax — we
+ * Tag a single template source string. Never touches Angular syntax - we
  * insert `data-testid="…"` exactly after the opening tag name and before
  * any existing attributes (so structural directives and `@if`/`@for` blocks
  * remain verbatim).
@@ -407,7 +366,7 @@ export function tagTemplateSource(
     if (!detected) return;
 
     // Respect a pre-existing runtime binding: the author wrote
-    // `[attr.data-testid]="..."` on purpose — e.g. to give every iterator
+    // `[attr.data-testid]="..."` on purpose - e.g. to give every iterator
     // row a unique testid. We must not insert a second static attribute
     // that would fight with the runtime value.
     const boundExisting = findBoundAttribute(el, config.attributeName);
@@ -469,7 +428,7 @@ export function tagTemplateSource(
       collisions += 1;
       if (config.collisionStrategy === 'error') {
         throw new Error(
-          `[tagger] collision on id '${id}' in ${options.componentPath} — ` +
+          `[tagger] collision on id '${id}' in ${options.componentPath} - ` +
             `two elements produce the same fingerprint and collisionStrategy='error' ` +
             `is set. Add an aria-label or formcontrolname to differentiate, or switch ` +
             `to collisionStrategy='hash-suffix'.`
@@ -521,7 +480,7 @@ export function tagTemplateSource(
     entries[c.id] = entry;
   }
 
-  // Insert attributes — sort by offset descending so earlier offsets stay valid.
+  // Insert attributes - sort by offset descending so earlier offsets stay valid.
   const toInsert = candidates.filter((c) => !c.alreadyTagged);
   toInsert.sort((a, b) => b.insertionOffset - a.insertionOffset);
 

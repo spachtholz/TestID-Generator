@@ -1,13 +1,5 @@
-/**
- * Deterministic JSON canonicalization (NFR-3).
- *
- * Sorts object keys alphabetically at every depth so that two structurally
- * equal objects always serialize to byte-identical JSON. Used by every writer
- * that persists state to disk — registry, diff reports — so hash-based
- * change detection in CI pipelines stays reliable.
- *
- * Array order is preserved (arrays are sequences, not sets).
- */
+// Sorted-key JSON so equal state produces byte-equal output (NFR-3).
+// Arrays are sequences, order is preserved.
 
 export function canonicalizeJson(value: unknown): unknown {
   if (Array.isArray(value)) {

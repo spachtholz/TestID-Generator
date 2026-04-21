@@ -1,14 +1,14 @@
 # Configuration
 
-Since v0.4.0, all three sub-tools (tagger, differ, locator generator) read from a single **unified config file**. Put it in your project root and pick whichever format is comfortable:
+Since v0.4.0, all three sub-tools (tagger, differ, locator generator) read from a single unified config file in the project root.
 
-| File | When to use |
+| File | Notes |
 |---|---|
-| `testid.config.json` | Zero-tooling, first-class (recommended). |
-| `testid.config.mjs` / `.js` | Want to compute values with code or import constants. |
-| `testid.config.ts` | TypeScript config via a runtime loader (ts-node etc.). |
+| `testid.config.json` | Recommended. No tooling required. |
+| `testid.config.mjs` / `.js` | For computed values or imported constants. |
+| `testid.config.ts` | Requires a TypeScript runtime loader (e.g. ts-node). |
 
-The old `testid-tagger.config.*` file still works — if it's present and the new one isn't, its root fields are interpreted as the `tagger` section. A one-time deprecation warning is printed to stderr; nothing breaks.
+The legacy `testid-tagger.config.*` is still picked up as a fallback: when present and the new file is absent, its root fields are interpreted as the `tagger` section and a one-time deprecation warning is printed to stderr.
 
 ## Shape
 
@@ -20,7 +20,7 @@ The old `testid-tagger.config.*` file still works — if it's present and the ne
 }
 ```
 
-All three sections are optional. Empty config = all defaults. You only need to spell out what you actually want to change.
+All three sections are optional. An empty config resolves to all defaults; only the keys you override need to be present.
 
 ---
 
@@ -34,7 +34,7 @@ All three sections are optional. Empty config = all defaults. You only need to s
 | `include` | `["**/*.component.html"]` | Which templates to scan. |
 | `ignore` | `[]` | Glob patterns to skip. |
 | `registryDir` | `"test-artifacts/testids"` | Where the versioned registry files land. |
-| `attributeName` | `"data-testid"` | The attribute itself — swap in `data-cy` for Cypress. |
+| `attributeName` | `"data-testid"` | The attribute itself - swap in `data-cy` for Cypress. |
 | `hashAlgorithm` | `"sha256"` | `sha256`, `sha1`, or `md5`. |
 | `hashLength` | `6` | Hash-suffix length, 4–16. |
 | `collisionStrategy` | `"hash-suffix"` | `hash-suffix` or `error`. |
@@ -58,9 +58,9 @@ All three sections are optional. Empty config = all defaults. You only need to s
 | `{hash}` | 6-char hex (empty when no collision) |
 | `{hash:-}` | Same as `{hash}` but prefixed with `-` when non-empty |
 
-### `tagger.registry` — controlling what goes into the JSON
+### `tagger.registry` - field selection
 
-A new sub-section that governs which optional fields are written into `testids.v{N}.json`.
+Controls which optional fields are written into `testids.v{N}.json`.
 
 ```json
 "registry": {
@@ -70,7 +70,7 @@ A new sub-section that governs which optional fields are written into `testids.v
 }
 ```
 
-**Profiles** set a baseline; any sibling key overrides it.
+A `profile` sets a baseline; any sibling key overrides it.
 
 | Field | `minimal` | `standard` | `full` |
 |---|:-:|:-:|:-:|
@@ -80,7 +80,7 @@ A new sub-section that governs which optional fields are written into `testids.v
 | `dynamic_children` | ❌ | ✅ | ✅ |
 | `last_generated_at`, `generation_history` | ❌ | ❌ | ✅ |
 
-**Granular overrides** (any of these win over the profile):
+Granular overrides (any of these override the profile default):
 
 | Key | Type | Purpose |
 |---|---|---|
@@ -90,7 +90,7 @@ A new sub-section that governs which optional fields are written into `testids.v
 | `includeDynamicChildren` | boolean | Write `dynamic_children` pattern for PrimeNG overlays |
 | `semanticFields` | `string[]` | Restrict which sub-keys of `semantic` are kept. Valid values: `formcontrolname`, `name`, `routerlink`, `aria_label`, `placeholder`, `text_content`, `type`, `role` |
 
-Pick `standard` if you want a sensible registry that reads nicely in PRs. `minimal` trims the file size in half. `full` (default) matches the pre-0.4.0 behaviour byte-for-byte.
+`full` (default) matches pre-0.4.0 behaviour byte-for-byte. `standard` drops history fields. `minimal` keeps only required schema fields plus `first_seen_version` / `last_seen_version`.
 
 ---
 
@@ -110,7 +110,7 @@ Pick `standard` if you want a sensible registry that reads nicely in PRs. `minim
 | `--format json` | `outputFormats: ["json"]` |
 | `--threshold 0.9` | `threshold: 0.9` |
 | `--show-regenerated` | `showRegenerated: true` |
-| `--json-only` | *deprecated* — same as `--format json` |
+| `--json-only` | *deprecated* - same as `--format json` |
 
 ---
 
@@ -121,19 +121,20 @@ Pick `standard` if you want a sensible registry that reads nicely in PRs. `minim
 | `variableFormat` | `"{component}_{element}_{key}"` | Template for Python variable names. Same placeholders as `idFormat`. |
 | `attributeName` | (inherits `tagger.attributeName`) | Override the attribute used in generated XPaths. |
 | `xpathPrefix` | `"xpath:"` | Prepended to every XPath. Set to `""` for SeleniumLibrary auto-detect. |
-| `overwrite` | `true` | Whether to overwrite existing `.py` files. |
+| `mode` | `"merge"` | Write strategy. `merge` preserves manual lines and rebuilds only `# testid-managed` lines; `overwrite` rewrites from scratch; `refuse` fails if the file exists. |
+| `overwrite` | *deprecated* | Legacy boolean. Maps to `mode: "overwrite"` (`true`) or `mode: "refuse"` (`false`). Ignored when `mode` is set. |
 
-### Why `variableFormat` matters
+### `variableFormat`
 
-If your `idFormat` is hash-only (`"tid-{hash}"`), the testid is opaque — something like `tid-abc123ef`. Without `variableFormat`, the Python constant would also be `tidAbc123ef`, which tells you nothing. With `{component}_{element}_{key}` the same row becomes:
+For hash-only `idFormat`s like `"tid-{hash}"` the testid is opaque (e.g. `tid-abc123ef`). The locator variable name is reconstructed from the registry entry rather than parsed from the testid, so the Python constant stays readable:
 
 ```python
 orderList_dropdown_customer = "xpath://*[@data-testid='tid-abc123ef']"  # testid-managed
 ```
 
-Each value is camelCased on its own, so literal `_` in the template survives as a separator.
+Each placeholder value is camelCased individually; literal `_` characters in the template survive as separators.
 
-### Placeholders available in `variableFormat`
+### `variableFormat` placeholders
 
 Same vocabulary as `idFormat`, sourced from the registry entry:
 
@@ -154,30 +155,31 @@ The rendered string is sanitised to a valid Python identifier; leading digits ar
 | `--variable-format '{element}_{key}'` | `variableFormat: "{element}_{key}"` |
 | `--attribute-name data-cy` | `attributeName: "data-cy"` |
 | `--xpath-prefix ''` | `xpathPrefix: ""` |
-| `--no-overwrite` | `overwrite: false` |
+| `--mode <merge\|overwrite\|refuse>` | `mode: "<value>"` |
+| `--no-overwrite` | *deprecated* - same as `--mode refuse` |
 
 ---
 
 ## Example configs
 
-The repo ships with a handful of ready-to-copy configs under [`examples/configs/`](../examples/configs/):
+Ready-to-copy configs under [`examples/configs/`](../examples/configs/):
 
-| File | Best for |
+| File | Purpose |
 |---|---|
 | `minimal.json` | Smallest possible registry JSON. |
-| `full-featured.json` | Everything on — good default for a real project. |
+| `full-featured.json` | All features enabled. |
 | `primeng-exclude.json` | Skip decorative PrimeNG wrappers. |
-| `custom-tag-map.json` | Map your own Angular components to readable short-types. |
-| `cypress-style.json` | `data-cy` + Cypress-friendly idFormat. |
-| `hash-only-with-readable-locators.json` | Short opaque testids, readable Python variables. |
+| `custom-tag-map.json` | Map custom Angular components to short-type names. |
+| `cypress-style.json` | `data-cy` attribute with a Cypress-friendly idFormat. |
+| `hash-only-with-readable-locators.json` | Opaque hash testids with readable Python variables. |
 | `legacy-tagger-only.json` | Pre-0.4.0 shape for reference. |
 
-For concrete code-level examples (before/after templates, rollback walk-through, locator output, …) see the [Examples](Examples) page.
+See the [Examples](Examples) page for before/after code snapshots.
 
 ## Migrating from `testid-tagger.config.json`
 
-No action required — the old filename is still picked up and mapped into the `tagger` section. To upgrade at your own pace:
+The legacy filename continues to work. To migrate to the unified shape:
 
 1. Rename the file to `testid.config.json`.
-2. Indent all existing keys one level deeper and wrap them in `"tagger": { ... }`.
-3. Add `differ` / `locators` sections only when you want to customise them.
+2. Wrap the existing keys in `"tagger": { ... }`.
+3. Optionally add `differ` / `locators` sections.
