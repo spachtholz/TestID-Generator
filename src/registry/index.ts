@@ -14,10 +14,12 @@ export {
   writeRegistry,
   serializeRegistry,
   findHighestExistingVersion,
+  isVersionedRegistryFile,
+  isoToFileSafe,
   mergeWithPrevious,
   detectManualOverrideEvents
 } from './writer.js';
-export type { WriteRegistryOptions, WriteResult, ManualOverrideEvent } from './writer.js';
+export type { WriteRegistryOptions, WriteResult, ManualOverrideEvent, RegistryNaming } from './writer.js';
 
 export { mergeEntriesWithHistory } from './merge.js';
 export type { MergeDisposition, MergeOptions, MergedEntryInfo } from './merge.js';

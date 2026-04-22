@@ -29,8 +29,10 @@ import {
   findAttribute,
   findBoundAttribute,
   getTagName,
+  type LoopContext,
   type VisitedElement
 } from './template-parser.js';
+import { formatLoopWarnings, type LoopWarning } from './loop-warner.js';
 import {
   detectElement,
   getDynamicChildrenSpec,
@@ -68,6 +70,7 @@ export interface TaggerRunResult {
   filesSkipped: number;
   entriesGenerated: number;
   collisions: number;
+  loopWarnings: LoopWarning[];
   dryRun: boolean;
   registryPath: string | null;
   latestPath: string | null;
@@ -114,6 +117,7 @@ export async function runTagger(
   let filesTagged = 0;
   let filesSkipped = 0;
   let collisions = 0;
+  const loopWarnings: LoopWarning[] = [];
 
   const outputDir = options.outputDir
     ? path.resolve(cwd, options.outputDir)
@@ -141,6 +145,11 @@ export async function runTagger(
     collisions += result.collisions;
     for (const [id, entry] of Object.entries(result.entries)) {
       newEntriesRaw[id] = entry;
+    }
+    if (config.loopWarnings) {
+      for (const w of result.loopWarnings) {
+        loopWarnings.push({ ...w, componentPath: relFromCwd.replace(/\\/g, '/') });
+      }
     }
 
     if (result.tagged !== original) {
@@ -208,6 +217,7 @@ export async function runTagger(
       dir: registryDir,
       version: nextVersion,
       retention: config.registryRetention,
+      naming: config.registryNaming,
       serializationOptions: resolveRegistryOptions(config.registry)
     });
     registryPath = write.versionedPath;
@@ -226,6 +236,10 @@ export async function runTagger(
     }
   }
 
+  if (config.loopWarnings && loopWarnings.length > 0) {
+    writeStderr(formatLoopWarnings(loopWarnings));
+  }
+
   return {
     version: nextVersion,
     registry,
@@ -233,6 +247,7 @@ export async function runTagger(
     filesSkipped,
     entriesGenerated: Object.keys(registry.entries).length,
     collisions,
+    loopWarnings,
     dryRun,
     registryPath,
     latestPath,
@@ -257,7 +272,7 @@ async function resolveTemplateFiles(args: {
   ignorePatterns: readonly string[];
   overrideFiles: readonly string[] | undefined;
 }): Promise<string[]> {
-  if (args.overrideFiles && args.overrideFiles.length > 0) {
+  if (args.overrideFiles && args.overrideFiles.length > 0) { // If --files is set
     const files = await globby([...args.overrideFiles], {
       cwd: args.cwd,
       ignore: [...args.ignorePatterns],
@@ -286,6 +301,7 @@ function emptyResult(dryRun: boolean): TaggerRunResult {
     filesSkipped: 0,
     entriesGenerated: 0,
     collisions: 0,
+    loopWarnings: [],
     dryRun,
     registryPath: null,
     latestPath: null,
@@ -334,6 +350,7 @@ export interface TagTemplateResult {
   tagged: string;
   entries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>>;
   collisions: number;
+  loopWarnings: LoopWarning[];
 }
 
 interface TagCandidate {
@@ -345,6 +362,7 @@ interface TagCandidate {
   existingId: string | null;
   insertionOffset: number;
   source: 'generated' | 'manual';
+  loop: LoopContext | null;
 }
 
 /**
@@ -361,7 +379,7 @@ export function tagTemplateSource(
   const parsed = parseAngularTemplate(source, { url: options.componentPath });
 
   const candidates: TagCandidate[] = [];
-  walkElements(parsed.ast, (el) => {
+  walkElements(parsed.ast, (el, loop) => {
     const detected = detectElement(el, config);
     if (!detected) return;
 
@@ -387,7 +405,8 @@ export function tagTemplateSource(
       alreadyTagged,
       existingId: existing?.value ?? null,
       insertionOffset,
-      source: 'generated' // tentative; finalized once we compare to the auto-generated id
+      source: 'generated', // tentative; finalized once we compare to the auto-generated id
+      loop
     });
   });
 
@@ -490,7 +509,25 @@ export function tagTemplateSource(
     tagged = tagged.slice(0, c.insertionOffset) + snippet + tagged.slice(c.insertionOffset);
   }
 
-  return { tagged, entries, collisions };
+  // Loop warnings: elements rendered n times getting a static id.
+  // A manually-authored testid (source="manual") is intentional, so don't warn.
+  const loopWarnings: LoopWarning[] = [];
+  for (const c of candidates) {
+    if (!c.loop || c.source === 'manual') continue;
+    const span = c.element.startSourceSpan;
+    const line = span?.start.line != null ? span.start.line + 1 : 0;
+    const column = span?.start.col != null ? span.start.col + 1 : 0;
+    loopWarnings.push({
+      componentPath: options.componentPath.replace(/\\/g, '/'),
+      line,
+      column,
+      id: c.id,
+      tag: c.detected.tag,
+      loop: c.loop
+    });
+  }
+
+  return { tagged, entries, collisions, loopWarnings };
 }
 
 /**

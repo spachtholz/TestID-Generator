@@ -58,62 +58,111 @@ export function parseAngularTemplate(source: string, options: ParseOptions = {})
 
 export type VisitedElement = TmplAstElement | TmplAstTemplate;
 
+export interface LoopContext {
+  /** Where the loop comes from. Used in warning messages. */
+  readonly kind: 'ngFor' | 'forBlock' | 'primeng-template';
+  /** label, e.g. "*ngFor", "@for", "pTemplate=\"body\"". */
+  readonly label: string;
+}
+
+export type VisitFn = (node: VisitedElement, loop: LoopContext | null) => void;
+
 /**
  * Walk the AST, invoking `visit` for every element-like node.
  *
  * Handles control-flow blocks (`@if`/`@for`/`@switch`/`@defer`) and the
- * `<ng-template>` template node.
+ * `<ng-template>` template node. Tracks whether the current subtree is
+ * rendered inside a loop (`*ngFor`, `@for`, PrimeNG body/item templates) and
+ * passes that info to the visitor.
  */
 export function walkElements(
   nodes: readonly TmplAstNode[] | undefined,
-  visit: (node: VisitedElement) => void
+  visit: VisitFn,
+  loop: LoopContext | null = null
 ): void {
-  if (!nodes) {
-    return;
-  }
+  if (!nodes) return;
   for (const node of nodes) {
-    walkNode(node, visit);
+    walkNode(node, visit, loop);
   }
 }
 
-function walkNode(node: TmplAstNode, visit: (node: VisitedElement) => void): void {
+function walkNode(node: TmplAstNode, visit: VisitFn, loop: LoopContext | null): void {
   if (isElementLike(node)) {
-    visit(node);
-    walkElements(node.children, visit);
+    // ng-template wrappers may themselves introduce a loop for their children.
+    const childLoop = isTemplateNode(node) ? detectTemplateLoop(node) ?? loop : loop;
+    visit(node, loop);
+    walkElements(node.children, visit, childLoop);
     return;
   }
 
   if (isIfBlock(node)) {
     for (const branch of node.branches) {
-      walkElements(branch.children, visit);
+      walkElements(branch.children, visit, loop);
     }
     return;
   }
 
   if (isForLoop(node)) {
-    walkElements(node.children, visit);
+    const forLoop: LoopContext = { kind: 'forBlock', label: '@for' };
+    walkElements(node.children, visit, forLoop);
+    // the @empty block only renders once, so it's not a loop context
     if (node.empty) {
-      walkElements(node.empty.children, visit);
+      walkElements(node.empty.children, visit, loop);
     }
     return;
   }
 
   if (isSwitchBlock(node)) {
     for (const c of node.cases) {
-      walkElements(c.children, visit);
+      walkElements(c.children, visit, loop);
     }
     return;
   }
 
   if (isDeferredBlock(node)) {
-    walkElements(node.children, visit);
-    if (node.placeholder) walkElements(node.placeholder.children, visit);
-    if (node.loading) walkElements(node.loading.children, visit);
-    if (node.error) walkElements(node.error.children, visit);
+    walkElements(node.children, visit, loop);
+    if (node.placeholder) walkElements(node.placeholder.children, visit, loop);
+    if (node.loading) walkElements(node.loading.children, visit, loop);
+    if (node.error) walkElements(node.error.children, visit, loop);
     return;
   }
 
   // Other nodes (Text, BoundText, Comment, Icu, LetDeclaration, ...) have no children.
+}
+
+// PrimeNG pTemplate values that render their body once per item in a collection.
+// Values like "header", "footer", "caption", "summary" render once and are not
+// flagged.
+const PRIMENG_LOOP_PTEMPLATES: ReadonlySet<string> = new Set([
+  'body',
+  'item',
+  'rowexpansion',
+  'groupheader',
+  'groupfooter',
+  'loadingbody'
+]);
+
+/**
+ * Inspect an <ng-template> node and return a LoopContext if it represents a
+ * per-item render (structural *ngFor or a known PrimeNG loop slot).
+ */
+function detectTemplateLoop(node: TmplAstTemplate): LoopContext | null {
+  // *ngFor compiles to an ng-template whose templateAttrs contain "ngFor".
+  for (const attr of node.templateAttrs ?? []) {
+    const name = attr.name?.toLowerCase?.();
+    if (name === 'ngfor' || name === 'ngforof') {
+      return { kind: 'ngFor', label: '*ngFor' };
+    }
+  }
+  // PrimeNG: <ng-template pTemplate="body" let-row>
+  for (const attr of node.attributes ?? []) {
+    if (attr.name?.toLowerCase() !== 'ptemplate') continue;
+    const value = (attr.value ?? '').toLowerCase();
+    if (PRIMENG_LOOP_PTEMPLATES.has(value)) {
+      return { kind: 'primeng-template', label: `pTemplate="${value}"` };
+    }
+  }
+  return null;
 }
 
 /* ---------------------------------------------------------------------- *

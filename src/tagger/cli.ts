@@ -33,6 +33,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       'restrict this run to specific templates (glob or path, relative to --cwd or absolute). Overrides config.include for this run.'
     )
     .option('--no-backup', 'skip writing pre-run backups (disables later `testid rollback`)')
+    .option('--no-loop-warnings', 'suppress warnings about static testids inside *ngFor/@for/pTemplate body')
     .allowExcessArguments(false)
     .addHelpText(
       'after',
@@ -61,6 +62,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     verbose?: boolean;
     files?: string[];
     backup: boolean;
+    loopWarnings: boolean;
   }>();
 
   const verbose = !!opts.verbose;
@@ -98,6 +100,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   // user's explicit opt-out always wins over a config default.
   if (opts.backup === false) {
     config.writeBackups = false;
+  }
+  if (opts.loopWarnings === false) {
+    config.loopWarnings = false;
   }
 
   process.stdout.write(
