@@ -8,6 +8,7 @@ import type { Registry } from './schema.js';
 import { parseRegistry } from './loader.js';
 
 const VERSIONED_FILE_PATTERN = /^testids\.v(\d+)\.json$/;
+const TIMESTAMPED_FILE_PATTERN = /^testids\.(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d+)?Z?)\.json$/;
 
 export interface IdHistoryRecord {
   first_seen_version: number;
@@ -71,10 +72,20 @@ async function listVersionedFiles(dir: string): Promise<{ path: string; version:
   }
   const out: { path: string; version: number }[] = [];
   for (const name of entries) {
-    const match = VERSIONED_FILE_PATTERN.exec(name);
-    if (!match?.[1]) continue;
-    const version = Number.parseInt(match[1], 10);
-    if (Number.isFinite(version)) out.push({ path: path.join(dir, name), version });
+    const vMatch = VERSIONED_FILE_PATTERN.exec(name);
+    if (vMatch?.[1]) {
+      const version = Number.parseInt(vMatch[1], 10);
+      if (Number.isFinite(version)) out.push({ path: path.join(dir, name), version });
+      continue;
+    }
+    if (TIMESTAMPED_FILE_PATTERN.test(name)) {
+      // Version is only recorded inside the JSON for timestamped files.
+      const filePath = path.join(dir, name);
+      const reg = await readRegistryFile(filePath);
+      if (reg && typeof reg.version === 'number') {
+        out.push({ path: filePath, version: reg.version });
+      }
+    }
   }
   return out;
 }

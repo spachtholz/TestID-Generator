@@ -15,8 +15,31 @@ export interface WriteResult {
   version: number;
 }
 
+export type RegistryNaming = 'version' | 'timestamp';
+
 const VERSIONED_FILE_PATTERN = /^testids\.v(\d+)\.json$/;
+const TIMESTAMPED_FILE_PATTERN = /^testids\.(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d+)?Z?)\.json$/;
 const LATEST_FILE_NAME = 'testids.latest.json';
+
+export function isVersionedRegistryFile(name: string): boolean {
+  return VERSIONED_FILE_PATTERN.test(name) || TIMESTAMPED_FILE_PATTERN.test(name);
+}
+
+/** ISO 8601 with colons and dots replaced so the string is safe as a filename. */
+export function isoToFileSafe(iso: string): string {
+  return iso.replace(/[:.]/g, '-');
+}
+
+function fileNameFor(
+  naming: RegistryNaming,
+  version: number,
+  generatedAt: string
+): string {
+  if (naming === 'timestamp') {
+    return `testids.${isoToFileSafe(generatedAt)}.json`;
+  }
+  return `testids.v${version}.json`;
+}
 
 /** Highest N in `testids.v{N}.json` under `dir`, or 0 if none. */
 export async function findHighestExistingVersion(dir: string): Promise<number> {
@@ -62,6 +85,8 @@ export interface WriteRegistryOptions {
   /** keep only newest N versioned files; 0 = keep all */
   retention?: number;
   serializationOptions?: ResolvedRegistryOptions;
+  /** how to name the versioned snapshot file. Defaults to 'version'. */
+  naming?: RegistryNaming;
 }
 
 export async function writeRegistry(
@@ -69,6 +94,7 @@ export async function writeRegistry(
   options: WriteRegistryOptions
 ): Promise<WriteResult> {
   const { dir } = options;
+  const naming: RegistryNaming = options.naming ?? 'version';
   await fs.mkdir(dir, { recursive: true });
 
   const version =
@@ -77,7 +103,7 @@ export async function writeRegistry(
   const finalRegistry: Registry = { ...registry, version };
   const serialized = serializeRegistry(finalRegistry, options.serializationOptions);
 
-  const versionedPath = path.join(dir, `testids.v${version}.json`);
+  const versionedPath = path.join(dir, fileNameFor(naming, version, finalRegistry.generated_at));
   const latestPath = path.join(dir, LATEST_FILE_NAME);
 
   await fs.writeFile(versionedPath, serialized, 'utf8');
@@ -98,18 +124,32 @@ async function pruneOldVersions(dir: string, keep: number): Promise<void> {
     return;
   }
 
-  const versioned: { name: string; version: number }[] = [];
+  // Treat both naming schemes as one pool ordered by internal version so a
+  // project that switched schemes mid-lifetime prunes cleanly.
+  const snapshots: { name: string; version: number }[] = [];
   for (const name of entries) {
-    const match = VERSIONED_FILE_PATTERN.exec(name);
-    if (match && match[1]) {
-      const v = Number.parseInt(match[1], 10);
-      if (Number.isFinite(v)) versioned.push({ name, version: v });
+    const vMatch = VERSIONED_FILE_PATTERN.exec(name);
+    if (vMatch && vMatch[1]) {
+      const v = Number.parseInt(vMatch[1], 10);
+      if (Number.isFinite(v)) snapshots.push({ name, version: v });
+      continue;
+    }
+    if (TIMESTAMPED_FILE_PATTERN.test(name)) {
+      try {
+        const raw = await fs.readFile(path.join(dir, name), 'utf8');
+        const parsed = JSON.parse(raw) as { version?: number };
+        if (typeof parsed.version === 'number' && Number.isFinite(parsed.version)) {
+          snapshots.push({ name, version: parsed.version });
+        }
+      } catch {
+        // skip unreadable/corrupt snapshot
+      }
     }
   }
-  if (versioned.length <= keep) return;
+  if (snapshots.length <= keep) return;
 
-  versioned.sort((a, b) => b.version - a.version);
-  const toDelete = versioned.slice(keep);
+  snapshots.sort((a, b) => b.version - a.version);
+  const toDelete = snapshots.slice(keep);
   await Promise.all(
     toDelete.map((entry) =>
       fs.unlink(path.join(dir, entry.name)).catch(() => undefined)

@@ -43,4 +43,7 @@ export {
   getTagName,
   getStaticTextContent
 } from './template-parser.js';
-export type { ParsedTemplate, ParseOptions, VisitedElement } from './template-parser.js';
+export type { ParsedTemplate, ParseOptions, VisitedElement, LoopContext } from './template-parser.js';
+
+export { formatLoopWarnings } from './loop-warner.js';
+export type { LoopWarning } from './loop-warner.js';

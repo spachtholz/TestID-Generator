@@ -70,10 +70,14 @@ export const TaggerConfigSchema = z.object({
   collisionStrategy: z.enum(['hash-suffix', 'error']).default('hash-suffix'),
   /** keep only N newest versioned files; 0 = keep all */
   registryRetention: z.number().int().min(0).default(0),
+  /** file naming for versioned registry snapshots: 'version' = testids.v{N}.json, 'timestamp' = testids.{iso-no-colons}.json */
+  registryNaming: z.enum(['version', 'timestamp']).default('version'),
   /** emit activity.v{N}.md + .json next to the registry */
   writeActivityLog: z.boolean().default(false),
   /** write pre-run backup.v{N}/ so testid rollback can undo */
   writeBackups: z.boolean().default(true),
+  /** warn when a static testid is emitted inside a loop context */
+  loopWarnings: z.boolean().default(true),
   /**
    * Override the shortType/longType for specific tags.
    * Checked before the built-in native/PrimeNG/Material maps.
