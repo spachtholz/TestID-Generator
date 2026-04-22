@@ -118,10 +118,12 @@ Granular overrides (any of these override the profile default):
 
 | Option | Default | What it does |
 |---|---|---|
-| `variableFormat` | `"{component}_{element}_{key}"` | Template for Python variable names. Same placeholders as `idFormat`. |
+| `variableFormat` | `"{component}_{element}_{key}"` | Template for Python variable names. Same placeholders as `idFormat`, plus `{testid}`. |
 | `attributeName` | (inherits `tagger.attributeName`) | Override the attribute used in generated XPaths. |
 | `xpathPrefix` | `"xpath:"` | Prepended to every XPath. Set to `""` for SeleniumLibrary auto-detect. |
 | `mode` | `"merge"` | Write strategy. `merge` preserves manual lines and rebuilds only `# testid-managed` lines; `overwrite` rewrites from scratch; `refuse` fails if the file exists. |
+| `lockNames` | `false` | Persist each emitted variable name onto its registry entry (`locator_name`) and reuse it on later runs. Keeps Python constants stable even when semantics drift (aria-label rewordings, text changes, etc.). |
+| `regenerateNames` | `false` | One-shot opt-out: with `lockNames`, recompute every persisted name from the current `variableFormat` and overwrite the registry. Use after changing the template. |
 | `overwrite` | *deprecated* | Legacy boolean. Maps to `mode: "overwrite"` (`true`) or `mode: "refuse"` (`false`). Ignored when `mode` is set. |
 
 ### `variableFormat`
@@ -145,6 +147,7 @@ Same vocabulary as `idFormat`, sourced from the registry entry:
 | `{key}` | First non-empty of `semantic.formcontrolname` / `name` / `aria_label` / `placeholder` / `text_content` / `routerlink`, falling back to `tag` |
 | `{tag}` | `entry.tag` |
 | `{hash}` | First 6 hex chars of `sha256(entry.fingerprint)` |
+| `{testid}` | The raw testid itself, camelCased. The tagger preserves the `data-testid` attribute across runs, so a format using `{testid}` produces names that are as stable as the testid in the HTML — immune to aria-label / placeholder rewordings. |
 
 The rendered string is sanitised to a valid Python identifier; leading digits are prefixed with `tid_`.
 
@@ -156,7 +159,16 @@ The rendered string is sanitised to a valid Python identifier; leading digits ar
 | `--attribute-name data-cy` | `attributeName: "data-cy"` |
 | `--xpath-prefix ''` | `xpathPrefix: ""` |
 | `--mode <merge\|overwrite\|refuse>` | `mode: "<value>"` |
+| `--lock-names` | `lockNames: true` |
+| `--regenerate-names` | `regenerateNames: true` |
 | `--no-overwrite` | *deprecated* - same as `--mode refuse` |
+
+### Locator-name stability
+
+Two independent levers, increasingly robust:
+
+1. **`variableFormat: "{testid}"`** — derive the Python constant from the raw (preserved) testid. Structural template edits (wrapping, reordering) don't touch the testid in the HTML, so the Python name also stays put. Semantic edits (aria-label rewordings) that change the testid still cause the name to change in lockstep.
+2. **`lockNames: true`** — on the first run, each emitted name is written back onto its registry entry as `locator_name` and reused verbatim on every subsequent run. The Python constant survives even when the testid itself changes (e.g. after an aria-label rewording), at the cost of a slight registry round-trip. To intentionally pick up a new `variableFormat` for all entries, run once with `--regenerate-names`.
 
 ---
 

@@ -34,6 +34,12 @@ export interface RegistryEntry {
   dynamic_children?: DynamicChildren | null;
   /** `generated` = tagger inserted, `manual` = human wrote it. Loader backfills legacy. */
   source?: EntrySource;
+  /**
+   * Frozen Python variable name emitted by gen-locators. Set when
+   * `locators.lockNames` is on so constants stay stable even if the entry's
+   * semantics drift (e.g. aria-label rewordings). Absent = no lock-in yet.
+   */
+  locator_name?: string;
   first_seen_version: number;
   last_seen_version: number;
   /** ISO-8601; set on fresh generation or regeneration, not on carry-overs */

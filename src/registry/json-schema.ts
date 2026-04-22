@@ -60,6 +60,7 @@ export const registryJsonSchema = {
           ]
         },
         source: { type: 'string', enum: ['generated', 'manual'] },
+        locator_name: { type: 'string', minLength: 1 },
         first_seen_version: { type: 'integer', minimum: 1 },
         last_seen_version: { type: 'integer', minimum: 1 },
         last_generated_at: { type: 'string', format: 'date-time' },

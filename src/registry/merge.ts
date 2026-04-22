@@ -60,13 +60,20 @@ function continueCarryOver(
   carried: RegistryEntry,
   nextVersion: number
 ): RegistryEntry {
-  return {
+  const merged: RegistryEntry = {
     ...incoming,
     first_seen_version: carried.first_seen_version,
     last_seen_version: nextVersion,
     last_generated_at: carried.last_generated_at,
     generation_history: carried.generation_history ?? [carried.first_seen_version]
   };
+  // Preserve the frozen locator name across tagger runs — incoming entries
+  // from the scanner don't carry it, but once gen-locators has written it
+  // into the registry it must survive every subsequent carry-over.
+  if (carried.locator_name !== undefined) {
+    merged.locator_name = carried.locator_name;
+  }
+  return merged;
 }
 
 function continueAfterGap(

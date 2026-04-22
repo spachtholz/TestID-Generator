@@ -27,6 +27,12 @@ export interface GenerateLocatorsOptions {
   /** Output directory for the per-component Python modules. */
   outDir: string;
   /**
+   * Path of the registry file the caller loaded. When `lockNames` mutates
+   * entries (adding/refreshing `locator_name`), the updated registry is
+   * rewritten to this path so the lock survives future runs.
+   */
+  registryPath?: string;
+  /**
    * Custom XPath prefix (default `xpath:`). Pass an empty string if your
    * SeleniumLibrary auto-detects XPath from leading `//`.
    */
@@ -53,14 +59,32 @@ export interface GenerateLocatorsOptions {
   mode?: 'merge' | 'overwrite' | 'refuse';
   /**
    * Template for Python variable names. Placeholders: `{component}`,
-   * `{element}`, `{key}`, `{tag}`, `{hash}` - same vocabulary as the tagger's
-   * `idFormat`. Default: `{component}_{element}_{key}` keeps names readable
-   * even for hash-only testids.
+   * `{element}`, `{key}`, `{tag}`, `{hash}`, `{testid}` - same vocabulary as
+   * the tagger's `idFormat`, plus `{testid}` which mirrors the (preserved)
+   * raw testid and is therefore the most stable anchor against template
+   * edits. Default: `{component}_{element}_{key}` keeps names readable even
+   * for hash-only testids.
    */
   variableFormat?: string;
+  /**
+   * When true, gen-locators reuses any previously persisted variable name
+   * stored on the registry entry (`locator_name`) and writes freshly-computed
+   * names back into the registry file for first-sighted entries. This makes
+   * Python constants bulletproof against semantic drift (e.g. aria-label
+   * rewordings) at the cost of a registry round-trip.
+   */
+  lockNames?: boolean;
+  /**
+   * Force `lockNames` to overwrite any persisted `locator_name`. Use once
+   * after intentionally changing `variableFormat` so the next run reconciles
+   * all stored names with the new template.
+   */
+  regenerateNames?: boolean;
 }
 
 export interface GenerateLocatorsResult {
   modules: LocatorModule[];
   writtenPaths: string[];
+  /** True when the registry was rewritten to persist `locator_name` changes. */
+  registryWritten?: boolean;
 }

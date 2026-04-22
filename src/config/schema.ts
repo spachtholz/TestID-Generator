@@ -18,7 +18,7 @@ export const DifferConfigSchema = z
 
 export const LocatorsConfigSchema = z
   .object({
-    /** placeholders: {component}, {element}, {key}, {tag}, {hash} */
+    /** placeholders: {component}, {element}, {key}, {tag}, {hash}, {testid} */
     variableFormat: z.string().min(1).default('{component}_{element}_{key}'),
     /** falls back to tagger.attributeName */
     attributeName: z.string().optional(),
@@ -26,7 +26,20 @@ export const LocatorsConfigSchema = z
     /** merge keeps manual lines, overwrite rewrites, refuse errors on existing */
     mode: z.enum(['merge', 'overwrite', 'refuse']).default('merge'),
     /** @deprecated use `mode` */
-    overwrite: z.boolean().optional()
+    overwrite: z.boolean().optional(),
+    /**
+     * Persist each emitted variable name onto its registry entry
+     * (`locator_name`). Frozen names are reused verbatim on subsequent runs,
+     * so tests keep working even when semantics (aria-label, placeholder,
+     * text content) are reworded.
+     */
+    lockNames: z.boolean().default(false),
+    /**
+     * One-shot opt-out: recompute every persisted `locator_name` from the
+     * current `variableFormat` and overwrite the registry. Use after
+     * intentionally changing the template.
+     */
+    regenerateNames: z.boolean().default(false)
   })
   .default({});
 

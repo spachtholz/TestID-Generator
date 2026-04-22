@@ -4,11 +4,13 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { Registry } from '../registry/index.js';
+import { serializeRegistry } from '../registry/index.js';
 import {
   buildLocatorEntry,
   DEFAULT_VARIABLE_FORMAT,
   filenameForComponent,
-  renderLocatorModule
+  renderLocatorModule,
+  renderVariableName
 } from './render.js';
 import { mergeLocatorModule } from './merge.js';
 import type {
@@ -36,8 +38,17 @@ export async function generateLocators(
   const xpathPrefix = options.xpathPrefix ?? 'xpath:';
   const variableFormat = options.variableFormat ?? DEFAULT_VARIABLE_FORMAT;
   const mode = resolveMode(options);
+  const lockNames = options.lockNames === true;
+  const regenerateNames = options.regenerateNames === true;
 
-  const modules = buildModules(registry, attributeName, xpathPrefix, variableFormat);
+  // When lockNames is on we may mutate entry.locator_name so future runs can
+  // reuse the frozen value. Track whether anything changed to decide if we
+  // need to rewrite the registry file.
+  const registryMutated = lockNames
+    ? reconcileLocatorNames(registry, variableFormat, regenerateNames)
+    : false;
+
+  const modules = buildModules(registry, attributeName, xpathPrefix, variableFormat, lockNames);
 
   await fs.mkdir(options.outDir, { recursive: true });
   const writtenPaths: string[] = [];
@@ -46,7 +57,39 @@ export async function generateLocators(
     await writeModule({ target, mod, mode, attributeName });
     writtenPaths.push(target);
   }
-  return { modules, writtenPaths };
+
+  if (registryMutated && options.registryPath) {
+    await fs.writeFile(options.registryPath, serializeRegistry(registry), 'utf8');
+  }
+
+  return { modules, writtenPaths, registryWritten: registryMutated && !!options.registryPath };
+}
+
+/**
+ * Walk the registry and ensure every entry has a `locator_name`. Returns true
+ * if any entry was added/updated so the caller knows to flush the registry.
+ */
+function reconcileLocatorNames(
+  registry: Registry,
+  variableFormat: string,
+  regenerate: boolean
+): boolean {
+  let changed = false;
+  for (const [testid, entry] of Object.entries(registry.entries)) {
+    const expected = renderVariableName(entry, testid, variableFormat);
+    if (regenerate) {
+      if (entry.locator_name !== expected) {
+        entry.locator_name = expected;
+        changed = true;
+      }
+      continue;
+    }
+    if (entry.locator_name === undefined) {
+      entry.locator_name = expected;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 async function writeModule(args: {
@@ -96,7 +139,8 @@ function buildModules(
   registry: Registry,
   attributeName: string,
   xpathPrefix: string,
-  variableFormat: string
+  variableFormat: string,
+  lockNames: boolean
 ): LocatorModule[] {
   const byComponent = new Map<string, LocatorEntry[]>();
   for (const [testid, entry] of Object.entries(registry.entries)) {
@@ -105,7 +149,8 @@ function buildModules(
       attributeName,
       xpathPrefix,
       variableFormat,
-      entry
+      entry,
+      frozenName: lockNames ? entry.locator_name : undefined
     });
     const list = byComponent.get(component) ?? [];
     list.push(locator);

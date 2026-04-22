@@ -117,6 +117,12 @@ function filterEntry(
   if (options.includeDynamicChildren && entry.dynamic_children !== undefined) {
     out.dynamic_children = entry.dynamic_children;
   }
+  // locator_name is always preserved when present. It's state that gen-locators
+  // has explicitly written in, not profile-gated derived data — dropping it on
+  // a `minimal` write would silently unfreeze the locator names on next run.
+  if (entry.locator_name !== undefined) {
+    out.locator_name = entry.locator_name;
+  }
   if (options.includeHistory) {
     if (entry.last_generated_at !== undefined) out.last_generated_at = entry.last_generated_at;
     if (entry.generation_history !== undefined) out.generation_history = entry.generation_history;

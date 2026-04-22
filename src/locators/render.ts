@@ -72,7 +72,11 @@ export function renderVariableName(
     element: camelCaseTestid(entry.element_type),
     key: camelCaseTestid(primarySemanticValue(entry)),
     tag: camelCaseTestid(entry.tag),
-    hash
+    hash,
+    // {testid} renders the camelCased raw testid — the single value that
+    // survives template structure changes (tagger preserves data-testid
+    // attributes across runs), making it the most stable anchor available.
+    testid: camelCaseTestid(testid)
   };
   const raw = renderIdTemplate(format, values);
   const sanitized = sanitizePythonIdentifier(raw);
@@ -110,16 +114,26 @@ export interface BuildLocatorEntryOptions {
   variableFormat?: string;
   /** When set, variable name is derived from the entry via the template. */
   entry?: RegistryEntry;
+  /**
+   * Pre-frozen variable name (from `entry.locator_name`). When present, wins
+   * over any template-derived name — this is the mechanism that keeps
+   * Python constants stable across semantic edits.
+   */
+  frozenName?: string;
 }
 
 export function buildLocatorEntry(
   testid: string,
   options: BuildLocatorEntryOptions
 ): LocatorEntry {
-  const variable =
-    options.entry !== undefined
-      ? renderVariableName(options.entry, testid, options.variableFormat)
-      : camelCaseTestid(testid);
+  let variable: string;
+  if (options.frozenName !== undefined && options.frozenName.length > 0) {
+    variable = options.frozenName;
+  } else if (options.entry !== undefined) {
+    variable = renderVariableName(options.entry, testid, options.variableFormat);
+  } else {
+    variable = camelCaseTestid(testid);
+  }
   return {
     variable,
     selector: xpathFor(testid, options.attributeName, options.xpathPrefix),

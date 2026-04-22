@@ -36,11 +36,19 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     )
     .option(
       '--variable-format <template>',
-      'Python variable-name template. Placeholders: {component}, {element}, {key}, {tag}, {hash}. Default: {component}_{element}_{key}'
+      'Python variable-name template. Placeholders: {component}, {element}, {key}, {tag}, {hash}, {testid}. Default: {component}_{element}_{key}'
     )
     .option(
       '--mode <mode>',
       'Write strategy: merge (default, preserves manual lines), overwrite (rewrite from scratch), refuse (fail if file exists)'
+    )
+    .option(
+      '--lock-names',
+      'Persist each emitted variable name onto its registry entry (locator_name) and reuse it on later runs. Makes Python constants stable against semantic drift.'
+    )
+    .option(
+      '--regenerate-names',
+      'With --lock-names, force-refresh all persisted names from the current --variable-format. Use once after changing the template.'
     )
     .option('--config <path>', 'Path to testid.config.json')
     .option(
@@ -70,6 +78,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     mode?: string;
     config?: string;
     overwrite: boolean;
+    lockNames?: boolean;
+    regenerateNames?: boolean;
     quiet?: boolean;
   }>();
 
@@ -125,12 +135,17 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   }
 
   try {
+    const lockNames = opts.lockNames ?? locatorsConfig.lockNames;
+    const regenerateNames = opts.regenerateNames ?? locatorsConfig.regenerateNames;
     const result = await generateLocators(registry, {
       outDir: opts.outDir,
+      registryPath,
       attributeName: opts.attributeName ?? locatorsConfig.attributeName ?? taggerConfig.attributeName,
       xpathPrefix: opts.xpathPrefix ?? locatorsConfig.xpathPrefix,
       mode,
-      variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat
+      variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat,
+      lockNames,
+      regenerateNames
     });
     if (!opts.quiet) {
       process.stdout.write(
@@ -141,6 +156,11 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       );
       for (const p of result.writtenPaths) {
         process.stdout.write(pc.gray(`  ${p}\n`));
+      }
+      if (result.registryWritten) {
+        process.stdout.write(
+          pc.gray(`  (updated ${registryPath} with locked locator names)\n`)
+        );
       }
     }
     return 0;
