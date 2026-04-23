@@ -3,6 +3,14 @@
   "version": "0.5.0",
   "description": "Build-time Toolchain für Angular: generiert deterministische data-testid-Attribute, versioniert sie, diffed Registry-Stände und erzeugt Robot-Framework-Lokatoren.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spachtholz/TestID-Generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spachtholz/TestID-Generator/issues"
+  },
+  "homepage": "https://github.com/spachtholz/TestID-Generator#readme",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
