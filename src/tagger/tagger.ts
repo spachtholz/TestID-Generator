@@ -61,6 +61,12 @@ export interface TaggerRunOptions {
   stderr?: (chunk: string) => void;
   /** glob/path overrides; replaces config.include for this run */
   files?: readonly string[];
+  /**
+   * Similarity threshold (0.1..1.0) for rename-aware `locator_name` carry-over
+   * in merge. When unset, uses the merge default (0.8). Typically sourced from
+   * `locators.renameThreshold` in the unified config.
+   */
+  locatorRenameThreshold?: number;
 }
 
 export interface TaggerRunResult {
@@ -190,7 +196,8 @@ export async function runTagger(
     history,
     newEntries: newEntriesRaw,
     nextVersion,
-    now
+    now,
+    renameThreshold: options.locatorRenameThreshold
   });
   registry.entries = merged;
 

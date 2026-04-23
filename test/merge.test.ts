@@ -83,4 +83,182 @@ describe('mergeEntriesWithHistory', () => {
     expect(info?.disposition).toBe('regenerated');
     expect(info?.previousVersion).toBe(1);
   });
+
+  it('carries locator_name from a removed entry onto a similar new one', () => {
+    const previous: Registry = {
+      ...createEmptyRegistry(2, '2026-01-01T00:00:00Z'),
+      entries: {
+        'order-list__input--customer-name': {
+          ...BARE_ENTRY,
+          semantic: {
+            formcontrolname: 'customer',
+            aria_label: 'Customer name',
+            placeholder: null,
+            text_content: null,
+            type: null
+          },
+          first_seen_version: 1,
+          last_seen_version: 2,
+          locator_name: 'orderList_input_customer'
+        }
+      }
+    };
+    // New testid appears after an aria-label rewording; the old key is gone.
+    const renamed: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'> = {
+      ...BARE_ENTRY,
+      semantic: {
+        formcontrolname: 'customer',
+        aria_label: 'Customer full name',
+        placeholder: null,
+        text_content: null,
+        type: null
+      }
+    };
+    const { merged, dispositions } = mergeEntriesWithHistory({
+      previous,
+      history: new Map(),
+      newEntries: { 'order-list__input--customer-full-name': renamed },
+      nextVersion: 3,
+      now: '2026-04-17T10:00:00Z'
+    });
+    expect(merged['order-list__input--customer-full-name']?.locator_name).toBe(
+      'orderList_input_customer'
+    );
+    expect(dispositions.get('order-list__input--customer-full-name')?.renamedFrom).toBe(
+      'order-list__input--customer-name'
+    );
+  });
+
+  it('does not carry locator_name when similarity is below threshold', () => {
+    const previous: Registry = {
+      ...createEmptyRegistry(2, '2026-01-01T00:00:00Z'),
+      entries: {
+        'old-id': {
+          ...BARE_ENTRY,
+          semantic: {
+            formcontrolname: 'customer',
+            aria_label: null,
+            placeholder: null,
+            text_content: null,
+            type: null
+          },
+          first_seen_version: 1,
+          last_seen_version: 2,
+          locator_name: 'orderList_input_customer'
+        }
+      }
+    };
+    const unrelated: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'> = {
+      ...BARE_ENTRY,
+      tag: 'button',
+      element_type: 'native_button',
+      semantic: {
+        formcontrolname: null,
+        aria_label: null,
+        placeholder: null,
+        text_content: 'Submit',
+        type: null
+      }
+    };
+    const { merged, dispositions } = mergeEntriesWithHistory({
+      previous,
+      history: new Map(),
+      newEntries: { 'completely-unrelated': unrelated },
+      nextVersion: 3,
+      now: '2026-04-17T10:00:00Z'
+    });
+    expect(merged['completely-unrelated']?.locator_name).toBeUndefined();
+    expect(dispositions.get('completely-unrelated')?.renamedFrom).toBeUndefined();
+  });
+
+  it('greedy-matches best donor when multiple removed entries could claim a new one', () => {
+    const previous: Registry = {
+      ...createEmptyRegistry(2, '2026-01-01T00:00:00Z'),
+      entries: {
+        'weak-match': {
+          ...BARE_ENTRY,
+          semantic: {
+            formcontrolname: 'customer',
+            aria_label: null,
+            placeholder: null,
+            text_content: null,
+            type: null
+          },
+          first_seen_version: 1,
+          last_seen_version: 2,
+          locator_name: 'weakName'
+        },
+        'strong-match': {
+          ...BARE_ENTRY,
+          semantic: {
+            formcontrolname: 'customer',
+            aria_label: 'Customer',
+            placeholder: 'Enter customer',
+            text_content: null,
+            type: null
+          },
+          first_seen_version: 1,
+          last_seen_version: 2,
+          locator_name: 'strongName'
+        }
+      }
+    };
+    const incoming: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'> = {
+      ...BARE_ENTRY,
+      semantic: {
+        formcontrolname: 'customer',
+        aria_label: 'Customer',
+        placeholder: 'Enter customer name',
+        text_content: null,
+        type: null
+      }
+    };
+    const { merged } = mergeEntriesWithHistory({
+      previous,
+      history: new Map(),
+      newEntries: { 'new-id': incoming },
+      nextVersion: 3,
+      now: '2026-04-17T10:00:00Z'
+    });
+    expect(merged['new-id']?.locator_name).toBe('strongName');
+  });
+
+  it('does not transfer when the removed donor has no locator_name to share', () => {
+    const previous: Registry = {
+      ...createEmptyRegistry(2, '2026-01-01T00:00:00Z'),
+      entries: {
+        'old-id': {
+          ...BARE_ENTRY,
+          semantic: {
+            formcontrolname: 'customer',
+            aria_label: null,
+            placeholder: null,
+            text_content: null,
+            type: null
+          },
+          first_seen_version: 1,
+          last_seen_version: 2
+          // no locator_name
+        }
+      }
+    };
+    const incoming: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'> = {
+      ...BARE_ENTRY,
+      semantic: {
+        formcontrolname: 'customer',
+        aria_label: 'Customer',
+        placeholder: null,
+        text_content: null,
+        type: null
+      }
+    };
+    const { merged } = mergeEntriesWithHistory({
+      previous,
+      history: new Map(),
+      newEntries: { 'new-id': incoming },
+      nextVersion: 3,
+      now: '2026-04-17T10:00:00Z'
+    });
+    expect(merged['new-id']?.locator_name).toBeUndefined();
+  });
 });

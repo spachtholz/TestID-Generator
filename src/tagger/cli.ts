@@ -7,6 +7,7 @@ import { loadConfig, findDefaultConfig, DEFAULT_CONFIG, type TaggerConfig } from
 import { runTagger } from './tagger.js';
 import { VERSION } from '../version.js';
 import { runIfDirect } from '../cli-common.js';
+import { loadTestidConfig } from '../config/loader.js';
 
 export async function main(argv: readonly string[] = process.argv): Promise<number> {
   const program = new Command();
@@ -114,6 +115,17 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     )
   );
 
+  // Pick up `locators.renameThreshold` from the unified config so rename-aware
+  // locator_name carry-over in merge can be tuned from the same file. The
+  // legacy tagger-only loader above doesn't expose it.
+  let locatorRenameThreshold: number | undefined;
+  try {
+    const unified = await loadTestidConfig(opts.config, opts.cwd);
+    locatorRenameThreshold = unified.config.locators.renameThreshold;
+  } catch {
+    // fall through — merge will use its default
+  }
+
   try {
     const result = await runTagger(config, {
       cwd: opts.cwd,
@@ -123,7 +135,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       configuration: opts.configuration,
       now: opts.now ?? new Date().toISOString(),
       verbose,
-      files: opts.files
+      files: opts.files,
+      locatorRenameThreshold
     });
 
     if (result.version === 0 && config.testConfigurationOnly && opts.configuration !== 'test') {

@@ -39,7 +39,15 @@ export const LocatorsConfigSchema = z
      * current `variableFormat` and overwrite the registry. Use after
      * intentionally changing the template.
      */
-    regenerateNames: z.boolean().default(false)
+    regenerateNames: z.boolean().default(false),
+    /**
+     * Similarity threshold (0.1..1.0) for rename-aware locator_name carry-over.
+     * When the tagger sees a brand-new testid that is highly similar to a
+     * removed previous entry holding a locator_name, the name is inherited so
+     * Python constants survive semantic edits (aria-label rewordings, etc.).
+     * Same algorithm as the differ. Raise toward 1.0 for stricter matching.
+     */
+    renameThreshold: z.number().min(0.1).max(1).default(0.8)
   })
   .default({});
 

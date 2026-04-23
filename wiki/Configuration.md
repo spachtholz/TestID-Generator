@@ -124,6 +124,7 @@ Granular overrides (any of these override the profile default):
 | `mode` | `"merge"` | Write strategy. `merge` preserves manual lines and rebuilds only `# testid-managed` lines; `overwrite` rewrites from scratch; `refuse` fails if the file exists. |
 | `lockNames` | `false` | Persist each emitted variable name onto its registry entry (`locator_name`) and reuse it on later runs. Keeps Python constants stable even when semantics drift (aria-label rewordings, text changes, etc.). |
 | `regenerateNames` | `false` | One-shot opt-out: with `lockNames`, recompute every persisted name from the current `variableFormat` and overwrite the registry. Use after changing the template. |
+| `renameThreshold` | `0.8` | Similarity cutoff (0.1..1.0) for rename-aware carry-over of `locator_name`. When the tagger generates a new testid whose fingerprint is highly similar to a removed previous entry holding a `locator_name`, the name is inherited. Raise toward `1.0` for stricter matching. |
 | `overwrite` | *deprecated* | Legacy boolean. Maps to `mode: "overwrite"` (`true`) or `mode: "refuse"` (`false`). Ignored when `mode` is set. |
 
 ### `variableFormat`
@@ -165,10 +166,11 @@ The rendered string is sanitised to a valid Python identifier; leading digits ar
 
 ### Locator-name stability
 
-Two independent levers, increasingly robust:
+Three independent levers, increasingly robust:
 
 1. **`variableFormat: "{testid}"`** — derive the Python constant from the raw (preserved) testid. Structural template edits (wrapping, reordering) don't touch the testid in the HTML, so the Python name also stays put. Semantic edits (aria-label rewordings) that change the testid still cause the name to change in lockstep.
 2. **`lockNames: true`** — on the first run, each emitted name is written back onto its registry entry as `locator_name` and reused verbatim on every subsequent run. The Python constant survives even when the testid itself changes (e.g. after an aria-label rewording), at the cost of a slight registry round-trip. To intentionally pick up a new `variableFormat` for all entries, run once with `--regenerate-names`.
+3. **`renameThreshold`** (combined with `lockNames`) — makes lever 2 survive in workflows where `data-testid` attributes are not committed to git. The tagger regenerates testids deterministically each build; when a fingerprint-relevant field changes (e.g. an aria-label is reworded), the *new* testid string is unequal to the old key and would normally appear as a brand-new entry. The merge compares every new entry against the removed previous entries via the differ's similarity algorithm and transfers the held `locator_name` when the score clears `renameThreshold`. Net effect: the generated `.py` file updates its XPath value but keeps the Python constant — Robot Framework tests don't break.
 
 ---
 
