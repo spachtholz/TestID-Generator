@@ -14,16 +14,16 @@
 npm install
 npm run build
 npm pack
-# produces testid-automation-0.5.0.tgz
+# produces testid-automation-0.5.1.tgz
 
-npm install -g ./testid-automation-0.5.0.tgz
+npm install -g ./testid-automation-0.5.1.tgz
 testid --help
 ```
 
 ## Install into a project
 
 ```bash
-npm install --save-dev ./testid-automation-0.5.0.tgz
+npm install --save-dev ./testid-automation-0.5.1.tgz
 npx testid tag --configuration test
 ```
 
