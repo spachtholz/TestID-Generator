@@ -33,7 +33,9 @@ All three sections are optional. An empty config resolves to all defaults; only 
 | `rootDir` | `"src"` | Where to start looking, relative to the project root. |
 | `include` | `["**/*.component.html"]` | Which templates to scan. |
 | `ignore` | `[]` | Glob patterns to skip. |
-| `registryDir` | `"test-artifacts/testids"` | Where the versioned registry files land. |
+| `registryDir` | `"test-artifacts/testids"` | Where the versioned registry files are read from and written to. Acts as the default for `registryInputDir` / `registryOutputDir`. |
+| `registryInputDir` | (inherits `registryDir`) | Optional. Directory the tagger reads `testids.latest.json` and the full version history from. Useful in hermetic CI when the previous registry is mounted read-only from a shared location. |
+| `registryOutputDir` | (inherits `registryDir`) | Optional. Directory the tagger writes new `testids.v{N}.json` snapshots, the `testids.latest.json` pointer, backups and activity logs into. Lets a CI job keep the writable output in the workspace and push it back to a shared location separately. |
 | `attributeName` | `"data-testid"` | The attribute itself - swap in `data-cy` for Cypress. |
 | `hashAlgorithm` | `"sha256"` | `sha256`, `sha1`, or `md5`. |
 | `hashLength` | `6` | Hash-suffix length, 4–16. |
@@ -91,6 +93,30 @@ Granular overrides (any of these override the profile default):
 | `semanticFields` | `string[]` | Restrict which sub-keys of `semantic` are kept. Valid values: `formcontrolname`, `name`, `routerlink`, `aria_label`, `placeholder`, `text_content`, `type`, `role` |
 
 `full` (default) matches pre-0.4.0 behaviour byte-for-byte. `standard` drops history fields. `minimal` keeps only required schema fields plus `first_seen_version` / `last_seen_version`.
+
+### Tagger CLI overrides
+
+| Flag | Equivalent to |
+|---|---|
+| `--registry-dir <dir>` | sets both input and output to `<dir>` (legacy single-dir behaviour) |
+| `--registry-input-dir <dir>` | `registryInputDir: "<dir>"` — wins over `--registry-dir` |
+| `--registry-output-dir <dir>` | `registryOutputDir: "<dir>"` — wins over `--registry-dir` |
+
+#### Hermetic CI example
+
+```bash
+# Previous registry sits on a shared, read-only mount; the build writes new
+# files into the workspace, then a separate publish step pushes them back.
+testid tag \
+  --configuration test \
+  --registry-input-dir  /mnt/testid-store/$PROJECT/registry \
+  --registry-output-dir ./test-artifacts/testids
+```
+
+This pattern keeps the build hermetic (no in-place writes against the shared
+mount), serialises easily with object-storage locking on the publish step, and
+preserves carry-over / regeneration detection because the previous registry
+plus full history is read from the shared location.
 
 ---
 

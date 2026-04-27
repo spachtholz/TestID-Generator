@@ -280,3 +280,76 @@ describe('runTagger - verbose + override warnings', () => {
     expect(v3Record?.kind).toBe('carried-over');
   });
 });
+
+describe('runTagger - split registry input/output dirs', () => {
+  let workDir = '';
+  const config = {
+    ...DEFAULT_CONFIG,
+    testConfigurationOnly: false,
+    rootDir: 'src',
+    writeBackups: false
+  };
+
+  beforeEach(async () => {
+    workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'testid-split-'));
+    await fs.mkdir(path.join(workDir, 'src'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(workDir, { recursive: true, force: true });
+  });
+
+  it('reads previous registry from input-dir and writes new files into output-dir', async () => {
+    // Seed v1 in the input-dir by running once with a unified registryDir, then
+    // copy the result into a read-side location.
+    const inputDir = path.join(workDir, 'shared-registry');
+    const outputDir = path.join(workDir, 'build-output');
+    await fs.mkdir(inputDir, { recursive: true });
+
+    await fs.writeFile(
+      path.join(workDir, 'src', 'hello.component.html'),
+      `<button type="submit">Send</button>`
+    );
+    await runTagger(config, { cwd: workDir, registryDir: inputDir });
+    const seeded = await loadLatestRegistry(inputDir);
+    expect(seeded?.version).toBe(1);
+    const seededId = Object.keys(seeded!.entries)[0]!;
+
+    // Pretend the build runs in a fresh checkout: clear the in-place tag, run
+    // the tagger again with split dirs. Output-dir starts empty.
+    await fs.writeFile(
+      path.join(workDir, 'src', 'hello.component.html'),
+      `<button type="submit">Send</button>`
+    );
+
+    await runTagger(config, {
+      cwd: workDir,
+      registryInputDir: inputDir,
+      registryOutputDir: outputDir
+    });
+
+    // New snapshot lands in output-dir; input-dir is untouched.
+    const fromOutput = await loadLatestRegistry(outputDir);
+    expect(fromOutput?.version).toBe(2);
+    expect(fromOutput!.entries[seededId]?.first_seen_version).toBe(1);
+
+    const inputAfter = await loadLatestRegistry(inputDir);
+    expect(inputAfter?.version).toBe(1); // not mutated
+    const inputFiles = await fs.readdir(inputDir);
+    expect(inputFiles.some((f) => f === 'testids.v2.json')).toBe(false);
+  });
+
+  it('falls back to registryDir when only the convenience override is set', async () => {
+    const sharedDir = path.join(workDir, 'shared');
+    await fs.writeFile(
+      path.join(workDir, 'src', 'hello.component.html'),
+      `<button type="submit">Send</button>`
+    );
+
+    await runTagger(config, { cwd: workDir, registryDir: sharedDir });
+    await runTagger(config, { cwd: workDir, registryDir: sharedDir });
+
+    const reg = await loadLatestRegistry(sharedDir);
+    expect(reg?.version).toBe(2);
+  });
+});

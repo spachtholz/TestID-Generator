@@ -49,7 +49,25 @@ import {
 
 export interface TaggerRunOptions {
   cwd?: string;
+  /**
+   * Convenience override that sets both input and output registry directories
+   * to the same path. Specific overrides (`registryInputDir`,
+   * `registryOutputDir`) take precedence over this when both are set.
+   */
   registryDir?: string;
+  /**
+   * Override the directory the tagger reads `testids.latest.json` and the
+   * full version history from. Falls back to `registryDir` (option), then to
+   * `config.registryInputDir`, then to `config.registryDir`.
+   */
+  registryInputDir?: string;
+  /**
+   * Override the directory the tagger writes new registry snapshots, the
+   * latest pointer, backups and activity logs into. Falls back to
+   * `registryDir` (option), then to `config.registryOutputDir`, then to
+   * `config.registryDir`.
+   */
+  registryOutputDir?: string;
   /** write tagged templates here instead of overwriting source */
   outputDir?: string;
   dryRun?: boolean;
@@ -111,10 +129,18 @@ export async function runTagger(
     overrideFiles: options.files
   });
 
-  const registryDir = path.resolve(cwd, options.registryDir ?? config.registryDir);
+  const baseRegistryDir = options.registryDir ?? config.registryDir;
+  const registryInputDir = path.resolve(
+    cwd,
+    options.registryInputDir ?? config.registryInputDir ?? baseRegistryDir
+  );
+  const registryOutputDir = path.resolve(
+    cwd,
+    options.registryOutputDir ?? config.registryOutputDir ?? baseRegistryDir
+  );
   const [previous, history] = await Promise.all([
-    loadLatestRegistry(registryDir),
-    loadFullHistory(registryDir)
+    loadLatestRegistry(registryInputDir),
+    loadFullHistory(registryInputDir)
   ]);
   const nextVersion = (previous?.version ?? 0) + 1;
 
@@ -171,7 +197,7 @@ export async function runTagger(
   const writeBackups = !dryRun && config.writeBackups !== false && outputDir === null;
   if (writeBackups && pendingWrites.length > 0) {
     await writeBackup({
-      registryDir,
+      registryDir: registryOutputDir,
       version: nextVersion,
       cwd,
       generatedAt: now,
@@ -221,7 +247,7 @@ export async function runTagger(
   let activityJsonPath: string | null = null;
   if (!dryRun) {
     const write = await writeRegistry(registry, {
-      dir: registryDir,
+      dir: registryOutputDir,
       version: nextVersion,
       retention: config.registryRetention,
       naming: config.registryNaming,
@@ -237,7 +263,7 @@ export async function runTagger(
         dispositions,
         manualOverrideIds: overrideIds
       });
-      const activityWrite = await writeActivityReport({ dir: registryDir, report });
+      const activityWrite = await writeActivityReport({ dir: registryOutputDir, report });
       activityMarkdownPath = activityWrite.markdownPath;
       activityJsonPath = activityWrite.jsonPath;
     }
@@ -468,8 +494,21 @@ export function tagTemplateSource(
         fingerprint: c.fingerprint.fingerprint,
         needsHashSuffix: true,
         hashLength: options.hashLength,
-        hashAlgorithm: config.hashAlgorithm
+        hashAlgorithm: config.hashAlgorithm,
+        idFormat: config.idFormat
       });
+      // If the user's idFormat contains neither {hash} nor {hash:-}, the
+      // disambiguation pass produces the exact same string and we'd silently
+      // overwrite a registry entry. Surface it instead of corrupting state.
+      if (id === wouldGenerate) {
+        throw new Error(
+          `[tagger] collision on id '${id}' in ${options.componentPath} - ` +
+            `idFormat='${config.idFormat}' contains no {hash} or {hash:-} placeholder, ` +
+            `so collisionStrategy='hash-suffix' cannot disambiguate two elements with ` +
+            `the same fingerprint. Add '{hash:-}' to your idFormat, or differentiate the ` +
+            `elements semantically (aria-label, formcontrolname, ...).`
+        );
+      }
     }
     c.id = id;
     c.source = 'generated';

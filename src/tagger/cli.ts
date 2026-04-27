@@ -23,7 +23,15 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     .option('--configuration <name>', 'Angular build configuration ("test" enables tagging)')
     .option('--dry-run', 'parse + plan + report but write nothing', false)
     .option('--output-dir <dir>', 'write tagged templates into this directory instead of in-place')
-    .option('--registry-dir <dir>', 'override config.registryDir')
+    .option('--registry-dir <dir>', 'override config.registryDir (sets both input and output)')
+    .option(
+      '--registry-input-dir <dir>',
+      'override the directory the previous registry is read from. Wins over --registry-dir.'
+    )
+    .option(
+      '--registry-output-dir <dir>',
+      'override the directory the new registry, backups and activity log are written to. Wins over --registry-dir.'
+    )
     .option('--cwd <dir>', 'base directory for relative paths (default: process.cwd())', process.cwd())
     .option('--now <iso>', 'override generated_at timestamp (for reproducible CI)')
     .option('--attribute-name <name>', 'override config.attributeName (e.g. data-cy)')
@@ -45,6 +53,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
         '  $ testid-tagger --config ./testid-tagger.config.json --cwd ./apps/web',
         '  $ testid-tagger --dry-run --verbose          # audit without touching files',
         '  $ testid-tagger --attribute-name data-cy     # emit Cypress-style attrs',
+        '  $ testid-tagger --registry-input-dir /mnt/share/registry --registry-output-dir ./out',
+        '                                               # hermetic CI: read previous registry from a',
+        '                                               # mounted share, write new files into the workspace',
         ''
       ].join('\n')
     )
@@ -56,6 +67,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     dryRun?: boolean;
     outputDir?: string;
     registryDir?: string;
+    registryInputDir?: string;
+    registryOutputDir?: string;
     cwd: string;
     now?: string;
     attributeName?: string;
@@ -106,12 +119,20 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     config.loopWarnings = false;
   }
 
+  const effectiveInputDir =
+    opts.registryInputDir ?? opts.registryDir ?? config.registryInputDir ?? config.registryDir;
+  const effectiveOutputDir =
+    opts.registryOutputDir ?? opts.registryDir ?? config.registryOutputDir ?? config.registryDir;
+  const dirsBanner =
+    effectiveInputDir === effectiveOutputDir
+      ? `registry-dir=${effectiveInputDir}`
+      : `registry-input=${effectiveInputDir} registry-output=${effectiveOutputDir}`;
   process.stdout.write(
     pc.gray(
       `[testid-tagger] configuration=${opts.configuration ?? '(none)'} ` +
         `attribute=${config.attributeName} ` +
         `dry-run=${!!opts.dryRun} ` +
-        `registry-dir=${opts.registryDir ?? config.registryDir}\n`
+        `${dirsBanner}\n`
     )
   );
 
@@ -130,6 +151,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     const result = await runTagger(config, {
       cwd: opts.cwd,
       registryDir: opts.registryDir,
+      registryInputDir: opts.registryInputDir,
+      registryOutputDir: opts.registryOutputDir,
       outputDir: opts.outputDir,
       dryRun: opts.dryRun,
       configuration: opts.configuration,

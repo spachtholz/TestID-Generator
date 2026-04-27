@@ -27,6 +27,20 @@ export const TaggerConfigSchema = z.object({
   include: z.array(z.string()).default(['**/*.component.html']),
   ignore: z.array(z.string()).default([]),
   registryDir: z.string().default('test-artifacts/testids'),
+  /**
+   * Optional. When set, the tagger reads `testids.latest.json` and the full
+   * version history from this directory instead of `registryDir`. Useful in
+   * hermetic CI pipelines where the previous registry is mounted read-only
+   * from a shared location.
+   */
+  registryInputDir: z.string().optional(),
+  /**
+   * Optional. When set, the tagger writes new `testids.v{N}.json` snapshots,
+   * the `testids.latest.json` pointer, backups and activity logs into this
+   * directory instead of `registryDir`. Lets a CI pipeline keep the writable
+   * output in the workspace and push it back to a shared location separately.
+   */
+  registryOutputDir: z.string().optional(),
   build: z
     .object({
       buildId: z.string().optional(),
