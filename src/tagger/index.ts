@@ -47,3 +47,6 @@ export type { ParsedTemplate, ParseOptions, VisitedElement, LoopContext } from '
 
 export { formatLoopWarnings } from './loop-warner.js';
 export type { LoopWarning } from './loop-warner.js';
+
+export { formatCollisionWarnings } from './collision-warner.js';
+export type { CollisionWarning, CollisionReason } from './collision-warner.js';

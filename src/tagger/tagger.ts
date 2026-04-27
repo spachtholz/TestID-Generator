@@ -33,6 +33,7 @@ import {
   type VisitedElement
 } from './template-parser.js';
 import { formatLoopWarnings, type LoopWarning } from './loop-warner.js';
+import { formatCollisionWarnings, type CollisionWarning } from './collision-warner.js';
 import {
   detectElement,
   getDynamicChildrenSpec,
@@ -95,6 +96,7 @@ export interface TaggerRunResult {
   entriesGenerated: number;
   collisions: number;
   loopWarnings: LoopWarning[];
+  collisionWarnings: CollisionWarning[];
   dryRun: boolean;
   registryPath: string | null;
   latestPath: string | null;
@@ -150,6 +152,7 @@ export async function runTagger(
   let filesSkipped = 0;
   let collisions = 0;
   const loopWarnings: LoopWarning[] = [];
+  const collisionWarnings: CollisionWarning[] = [];
 
   const outputDir = options.outputDir
     ? path.resolve(cwd, options.outputDir)
@@ -182,6 +185,9 @@ export async function runTagger(
       for (const w of result.loopWarnings) {
         loopWarnings.push({ ...w, componentPath: relFromCwd.replace(/\\/g, '/') });
       }
+    }
+    for (const w of result.collisionWarnings) {
+      collisionWarnings.push({ ...w, componentPath: relFromCwd.replace(/\\/g, '/') });
     }
 
     if (result.tagged !== original) {
@@ -272,6 +278,9 @@ export async function runTagger(
   if (config.loopWarnings && loopWarnings.length > 0) {
     writeStderr(formatLoopWarnings(loopWarnings));
   }
+  if (collisionWarnings.length > 0) {
+    writeStderr(formatCollisionWarnings(collisionWarnings));
+  }
 
   return {
     version: nextVersion,
@@ -281,6 +290,7 @@ export async function runTagger(
     entriesGenerated: Object.keys(registry.entries).length,
     collisions,
     loopWarnings,
+    collisionWarnings,
     dryRun,
     registryPath,
     latestPath,
@@ -335,6 +345,7 @@ function emptyResult(dryRun: boolean): TaggerRunResult {
     entriesGenerated: 0,
     collisions: 0,
     loopWarnings: [],
+    collisionWarnings: [],
     dryRun,
     registryPath: null,
     latestPath: null,
@@ -384,6 +395,7 @@ export interface TagTemplateResult {
   entries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>>;
   collisions: number;
   loopWarnings: LoopWarning[];
+  collisionWarnings: CollisionWarning[];
 }
 
 interface TagCandidate {
@@ -453,6 +465,7 @@ export function tagTemplateSource(
   }
 
   let collisions = 0;
+  const collisionWarnings: CollisionWarning[] = [];
   for (const c of candidates) {
     // Always compute what the tagger *would* assign, so we can tell a
     // tagger-authored id (that was simply carried over from a previous run) apart
@@ -486,28 +499,35 @@ export function tagTemplateSource(
             `to collisionStrategy='hash-suffix'.`
         );
       }
-      id = generateId({
-        componentName: options.componentName,
-        elementType: c.detected.shortType,
-        primaryValue: c.fingerprint.primaryValue,
-        tag: c.detected.tag,
-        fingerprint: c.fingerprint.fingerprint,
-        needsHashSuffix: true,
-        hashLength: options.hashLength,
-        hashAlgorithm: config.hashAlgorithm,
-        idFormat: config.idFormat
-      });
-      // If the user's idFormat contains neither {hash} nor {hash:-}, the
-      // disambiguation pass produces the exact same string and we'd silently
-      // overwrite a registry entry. Surface it instead of corrupting state.
-      if (id === wouldGenerate) {
-        throw new Error(
-          `[tagger] collision on id '${id}' in ${options.componentPath} - ` +
-            `idFormat='${config.idFormat}' contains no {hash} or {hash:-} placeholder, ` +
-            `so collisionStrategy='hash-suffix' cannot disambiguate two elements with ` +
-            `the same fingerprint. Add '{hash:-}' to your idFormat, or differentiate the ` +
-            `elements semantically (aria-label, formcontrolname, ...).`
-        );
+      // Try hash-based disambiguation only if the format actually has a slot
+      // to render the hash into.
+      const formatHasHashSlot = /\{hash(:-)?\}/.test(config.idFormat);
+      if (formatHasHashSlot) {
+        id = generateId({
+          componentName: options.componentName,
+          elementType: c.detected.shortType,
+          primaryValue: c.fingerprint.primaryValue,
+          tag: c.detected.tag,
+          fingerprint: c.fingerprint.fingerprint,
+          needsHashSuffix: true,
+          hashLength: options.hashLength,
+          hashAlgorithm: config.hashAlgorithm,
+          idFormat: config.idFormat
+        });
+      }
+      // If we still collide, either the format has no hash slot, or the
+      // elements share a byte-identical fingerprint (same hash). Both cases
+      // are unresolvable - emit a warning, let duplicates share the id.
+      if (usedIds.has(id)) {
+        const span = c.element.startSourceSpan;
+        collisionWarnings.push({
+          componentPath: options.componentPath.replace(/\\/g, '/'),
+          line: span?.start.line != null ? span.start.line + 1 : 0,
+          column: span?.start.col != null ? span.start.col + 1 : 0,
+          id,
+          tag: c.detected.tag,
+          reason: formatHasHashSlot ? 'identical-fingerprint' : 'no-hash-placeholder'
+        });
       }
     }
     c.id = id;
@@ -573,7 +593,7 @@ export function tagTemplateSource(
     });
   }
 
-  return { tagged, entries, collisions, loopWarnings };
+  return { tagged, entries, collisions, loopWarnings, collisionWarnings };
 }
 
 /**

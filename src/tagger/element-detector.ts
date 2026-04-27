@@ -27,6 +27,9 @@ export type ElementTypeShort =
   | 'table'
   | 'dataview'
   | 'form-field'
+  | 'message'
+  | 'paginator'
+  | 'tree'
   | 'generic'
   | (string & {}); // NOLINT - keep literal suggestions visible to callers
 
@@ -40,20 +43,80 @@ export interface DetectedElement {
 
 /** PrimeNG tag -> (short, long) mapping. */
 const PRIMENG_MAP: Record<string, { short: ElementTypeShort; long: ElementTypeLong }> = {
+  // Selects / dropdowns
   'p-dropdown': { short: 'dropdown', long: 'primeng_dropdown' },
   'p-select': { short: 'select', long: 'primeng_select' },
+  'p-multiselect': { short: 'multiselect', long: 'primeng_multiselect' },
+  'p-cascadeselect': { short: 'select', long: 'primeng_cascadeselect' },
+  'p-treeselect': { short: 'select', long: 'primeng_treeselect' },
+  'p-listbox': { short: 'listbox', long: 'primeng_listbox' },
+  'p-autocomplete': { short: 'autocomplete', long: 'primeng_autocomplete' },
+  'p-mention': { short: 'input', long: 'primeng_mention' },
+
+  // Date / time
   'p-calendar': { short: 'calendar', long: 'primeng_calendar' },
   'p-datepicker': { short: 'datepicker', long: 'primeng_datepicker' },
-  'p-checkbox': { short: 'checkbox', long: 'primeng_checkbox' },
-  'p-radiobutton': { short: 'radio', long: 'primeng_radio' },
-  'p-multiselect': { short: 'multiselect', long: 'primeng_multiselect' },
-  'p-autocomplete': { short: 'autocomplete', long: 'primeng_autocomplete' },
+
+  // Text-like inputs
   'p-inputtext': { short: 'input', long: 'primeng_input' },
-  'p-dialog': { short: 'dialog', long: 'primeng_dialog' },
-  'p-listbox': { short: 'listbox', long: 'primeng_listbox' },
+  'p-inputnumber': { short: 'input', long: 'primeng_input_number' },
+  'p-inputmask': { short: 'input', long: 'primeng_input_mask' },
+  'p-password': { short: 'input', long: 'primeng_password' },
+  'p-textarea': { short: 'textarea', long: 'primeng_textarea' },
+  'p-inputtextarea': { short: 'textarea', long: 'primeng_textarea' },
+  'p-editor': { short: 'textarea', long: 'primeng_editor' },
+  'p-chips': { short: 'input', long: 'primeng_chips' },
+  'p-iconfield': { short: 'form-field', long: 'primeng_iconfield' },
+  'p-floatlabel': { short: 'form-field', long: 'primeng_floatlabel' },
+
+  // Boolean / choice
+  'p-checkbox': { short: 'checkbox', long: 'primeng_checkbox' },
+  'p-tristatecheckbox': { short: 'checkbox', long: 'primeng_tristate_checkbox' },
+  'p-radiobutton': { short: 'radio', long: 'primeng_radio' },
+  'p-inputswitch': { short: 'checkbox', long: 'primeng_switch' },
+  'p-toggleswitch': { short: 'checkbox', long: 'primeng_switch' },
+  'p-togglebutton': { short: 'button', long: 'primeng_toggle_button' },
+
+  // Numeric / range
+  'p-rating': { short: 'input', long: 'primeng_rating' },
+  'p-slider': { short: 'input', long: 'primeng_slider' },
+  'p-knob': { short: 'input', long: 'primeng_knob' },
+  'p-colorpicker': { short: 'input', long: 'primeng_colorpicker' },
+
+  // Files
+  'p-fileupload': { short: 'input', long: 'primeng_fileupload' },
+
+  // Buttons
+  'p-button': { short: 'button', long: 'primeng_button' },
+  'p-splitbutton': { short: 'button', long: 'primeng_split_button' },
+  'p-speeddial': { short: 'button', long: 'primeng_speeddial' },
+
+  // Data
   'p-table': { short: 'table', long: 'primeng_table' },
+  'p-treetable': { short: 'table', long: 'primeng_treetable' },
+  'p-tree': { short: 'tree', long: 'primeng_tree' },
   'p-dataview': { short: 'dataview', long: 'primeng_dataview' },
-  'p-button': { short: 'button', long: 'primeng_button' }
+  'p-orderlist': { short: 'listbox', long: 'primeng_orderlist' },
+  'p-picklist': { short: 'listbox', long: 'primeng_picklist' },
+  'p-paginator': { short: 'paginator', long: 'primeng_paginator' },
+  'p-virtualscroller': { short: 'generic', long: 'primeng_virtualscroller' },
+  'p-carousel': { short: 'generic', long: 'primeng_carousel' },
+  'p-galleria': { short: 'generic', long: 'primeng_galleria' },
+
+  // Overlays / dialogs
+  'p-dialog': { short: 'dialog', long: 'primeng_dialog' },
+  'p-confirmdialog': { short: 'dialog', long: 'primeng_confirm_dialog' },
+  'p-dynamicdialog': { short: 'dialog', long: 'primeng_dynamic_dialog' },
+  'p-overlaypanel': { short: 'dialog', long: 'primeng_overlay_panel' },
+  'p-popover': { short: 'dialog', long: 'primeng_popover' },
+  'p-sidebar': { short: 'dialog', long: 'primeng_sidebar' },
+  'p-drawer': { short: 'dialog', long: 'primeng_drawer' },
+
+  // Messages
+  'p-message': { short: 'message', long: 'primeng_message' },
+  'p-messages': { short: 'message', long: 'primeng_messages' },
+  'p-inlinemessage': { short: 'message', long: 'primeng_inline_message' },
+  'p-toast': { short: 'message', long: 'primeng_toast' }
 };
 
 /** Angular Material tag -> (short, long). */
@@ -184,6 +247,35 @@ const DYNAMIC_CHILDREN_BY_TAG: Record<string, DynamicChildrenPatternSpec> = {
   'p-autocomplete': {
     pattern: (id) => `[data-testid='${id}'] ~ .p-autocomplete-overlay li`,
     addressing: ['by_index', 'by_text', 'by_value']
+  },
+  'p-cascadeselect': {
+    pattern: (id) => `[data-testid='${id}'] ~ .p-cascadeselect-overlay li`,
+    addressing: ['by_index', 'by_text', 'by_value']
+  },
+  'p-treeselect': {
+    pattern: (id) =>
+      `[data-testid='${id}'] ~ .p-treeselect-overlay .p-tree-node-content`,
+    addressing: ['by_index', 'by_text', 'by_value']
+  },
+  'p-tree': {
+    pattern: (id) => `[data-testid='${id}'] .p-tree-node-content`,
+    addressing: ['by_index', 'by_text']
+  },
+  'p-treetable': {
+    pattern: (id) => `[data-testid='${id}'] tbody tr`,
+    addressing: ['by_index', 'by_text']
+  },
+  'p-orderlist': {
+    pattern: (id) => `[data-testid='${id}'] .p-orderlist-item`,
+    addressing: ['by_index', 'by_text', 'by_value']
+  },
+  'p-picklist': {
+    pattern: (id) => `[data-testid='${id}'] .p-picklist-item`,
+    addressing: ['by_index', 'by_text', 'by_value']
+  },
+  'p-paginator': {
+    pattern: (id) => `[data-testid='${id}'] .p-paginator-page`,
+    addressing: ['by_index']
   },
   'p-table': {
     pattern: (id) => `[data-testid='${id}'] tbody tr`,
