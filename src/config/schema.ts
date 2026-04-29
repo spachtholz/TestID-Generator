@@ -25,6 +25,14 @@ export const LocatorsConfigSchema = z
     xpathPrefix: z.string().default('xpath:'),
     /** merge keeps manual lines, overwrite rewrites, refuse errors on existing */
     mode: z.enum(['merge', 'overwrite', 'refuse']).default('merge'),
+    /**
+     * basename: strip extension only (legacy, silently overwrites on collision)
+     * basename-strict: same naming, but error on basename collision
+     * disambiguate: prefix with parent path segments when basenames collide
+     */
+    componentNaming: z
+      .enum(['basename', 'basename-strict', 'disambiguate'])
+      .default('basename'),
     /** @deprecated use `mode` */
     overwrite: z.boolean().optional(),
     /**

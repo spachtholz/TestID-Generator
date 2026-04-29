@@ -12,9 +12,14 @@
 
 export { renderLocatorModule, filenameForComponent } from './render.js';
 export { generateLocators } from './generator.js';
+export { resolveComponentNames } from './component-naming.js';
+export { renderMigrationReport } from './migration-report.js';
+export type { ComponentNamingMode } from './component-naming.js';
 export type {
   GenerateLocatorsOptions,
   GenerateLocatorsResult,
   LocatorEntry,
-  LocatorModule
+  LocatorModule,
+  MigrationReport,
+  MigrationReportEntry
 } from './types.js';

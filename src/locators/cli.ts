@@ -11,10 +11,13 @@
  *   testid-gen-locators <registry.json> --out-dir <dir> [options]
  */
 
+import { promises as fs } from 'node:fs';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { loadRegistry } from '../registry/index.js';
 import { generateLocators } from './generator.js';
+import { renderMigrationReport } from './migration-report.js';
+import type { ComponentNamingMode } from './component-naming.js';
 import { VERSION } from '../version.js';
 import { runIfDirect } from '../cli-common.js';
 import { loadTestidConfig } from '../config/loader.js';
@@ -50,6 +53,15 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       '--regenerate-names',
       'With --lock-names, force-refresh all persisted names from the current --variable-format. Use once after changing the template.'
     )
+    .option(
+      '--component-naming <mode>',
+      'Component label strategy: basename (default), basename-strict (error on collision), disambiguate (prefix path segments on collision)'
+    )
+    .option(
+      '--migration-report',
+      'Print a rename map (basename -> current naming) plus sed snippets and orphan-file list'
+    )
+    .option('--report-out <path>', 'Write the migration report to a file instead of stdout')
     .option('--config <path>', 'Path to testid.config.json')
     .option(
       '--no-overwrite',
@@ -76,6 +88,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     xpathPrefix?: string;
     variableFormat?: string;
     mode?: string;
+    componentNaming?: string;
+    migrationReport?: boolean;
+    reportOut?: string;
     config?: string;
     overwrite: boolean;
     lockNames?: boolean;
@@ -91,6 +106,23 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   const configResult = await loadTestidConfig(opts.config);
   const locatorsConfig = configResult.config.locators;
   const taggerConfig = configResult.config.tagger;
+
+  let componentNaming: ComponentNamingMode = locatorsConfig.componentNaming;
+  if (opts.componentNaming !== undefined) {
+    if (
+      opts.componentNaming !== 'basename' &&
+      opts.componentNaming !== 'basename-strict' &&
+      opts.componentNaming !== 'disambiguate'
+    ) {
+      process.stderr.write(
+        pc.red(
+          `[testid-gen-locators] Invalid --component-naming "${opts.componentNaming}". Valid: basename, basename-strict, disambiguate.\n`
+        )
+      );
+      return 2;
+    }
+    componentNaming = opts.componentNaming;
+  }
 
   // Resolve mode: explicit --mode > --no-overwrite (deprecated alias) >
   // config.mode > legacy config.overwrite > default 'merge'.
@@ -145,7 +177,9 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       mode,
       variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat,
       lockNames,
-      regenerateNames
+      regenerateNames,
+      componentNaming,
+      migrationReport: opts.migrationReport === true || opts.reportOut !== undefined
     });
     if (!opts.quiet) {
       process.stdout.write(
@@ -161,6 +195,17 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
         process.stdout.write(
           pc.gray(`  (updated ${registryPath} with locked locator names)\n`)
         );
+      }
+    }
+    if (result.migrationReport) {
+      const text = renderMigrationReport(result.migrationReport);
+      if (opts.reportOut) {
+        await fs.writeFile(opts.reportOut, text, 'utf8');
+        if (!opts.quiet) {
+          process.stdout.write(pc.gray(`[testid-gen-locators] migration report -> ${opts.reportOut}\n`));
+        }
+      } else {
+        process.stdout.write('\n' + text);
       }
     }
     return 0;

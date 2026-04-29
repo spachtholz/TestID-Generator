@@ -52,7 +52,7 @@ function primarySemanticValue(entry: RegistryEntry): string {
   return entry.tag;
 }
 
-function componentSlug(componentPath: string): string {
+export function componentSlug(componentPath: string): string {
   const base = componentPath.split(/[\\/]/).pop() ?? componentPath;
   return base
     .replace(/\.component\.html$/i, '')
@@ -64,11 +64,13 @@ function componentSlug(componentPath: string): string {
 export function renderVariableName(
   entry: RegistryEntry,
   testid: string,
-  format: string = DEFAULT_VARIABLE_FORMAT
+  format: string = DEFAULT_VARIABLE_FORMAT,
+  componentLabel?: string
 ): string {
   const hash = createHash('sha256').update(entry.fingerprint, 'utf8').digest('hex').slice(0, 6);
+  const componentSource = componentLabel ?? componentSlug(entry.component);
   const values: Record<string, string> = {
-    component: camelCaseTestid(componentSlug(entry.component)),
+    component: camelCaseTestid(componentSource),
     element: camelCaseTestid(entry.element_type),
     key: camelCaseTestid(primarySemanticValue(entry)),
     tag: camelCaseTestid(entry.tag),
@@ -120,6 +122,8 @@ export interface BuildLocatorEntryOptions {
    * Python constants stable across semantic edits.
    */
   frozenName?: string;
+  /** Overrides the `{component}` placeholder source. */
+  componentLabel?: string;
 }
 
 export function buildLocatorEntry(
@@ -130,7 +134,12 @@ export function buildLocatorEntry(
   if (options.frozenName !== undefined && options.frozenName.length > 0) {
     variable = options.frozenName;
   } else if (options.entry !== undefined) {
-    variable = renderVariableName(options.entry, testid, options.variableFormat);
+    variable = renderVariableName(
+      options.entry,
+      testid,
+      options.variableFormat,
+      options.componentLabel
+    );
   } else {
     variable = camelCaseTestid(testid);
   }

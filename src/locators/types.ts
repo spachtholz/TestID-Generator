@@ -80,6 +80,33 @@ export interface GenerateLocatorsOptions {
    * all stored names with the new template.
    */
   regenerateNames?: boolean;
+  /**
+   * How to derive the component label that drives filenames and `{component}`:
+   *   - `basename` (default) - strip extension; silent overwrite on collision
+   *   - `basename-strict` - same naming, but throw on basename collision
+   *   - `disambiguate` - prepend the differing path segment(s) on collision
+   */
+  componentNaming?: 'basename' | 'basename-strict' | 'disambiguate';
+  /**
+   * When true, return a MigrationReport on the result describing how
+   * component labels and variable names differ from the legacy `basename`
+   * naming, plus orphan-file detection.
+   */
+  migrationReport?: boolean;
+}
+
+export interface MigrationReportEntry {
+  componentPath: string;
+  oldComponent: string;
+  newComponent: string;
+  oldFilename: string;
+  newFilename: string;
+  variables: { testid: string; oldVariable: string; newVariable: string }[];
+}
+
+export interface MigrationReport {
+  entries: MigrationReportEntry[];
+  orphanFiles: string[];
 }
 
 export interface GenerateLocatorsResult {
@@ -87,4 +114,5 @@ export interface GenerateLocatorsResult {
   writtenPaths: string[];
   /** True when the registry was rewritten to persist `locator_name` changes. */
   registryWritten?: boolean;
+  migrationReport?: MigrationReport;
 }

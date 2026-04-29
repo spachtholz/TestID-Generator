@@ -60,6 +60,11 @@ export const SUBCOMMANDS: Record<string, Subcommand> = {
     canonical: 'rollback',
     description: 'Alias for `rollback`',
     load: async () => (await import('./rollback/cli.js')).main
+  },
+  'migrate-locators': {
+    canonical: 'migrate-locators',
+    description: 'Sync Robot Framework ${var} references after locator renames',
+    load: async () => (await import('./migrate/cli.js')).main
   }
 };
 
@@ -110,6 +115,7 @@ function printGlobalHelp(stream: NodeJS.WriteStream = process.stdout): void {
   lines.push('  testid tag --configuration test --verbose');
   lines.push('  testid diff testids.v1.json testids.v2.json --out-dir diffs/');
   lines.push('  testid gen-locators testids.latest.json --out-dir tests/locators');
+  lines.push('  testid migrate-locators --from old/ --to new/ --robot-dir tests/');
   lines.push('  testid rollback                              # undo the last tag run');
   lines.push('');
   lines.push(

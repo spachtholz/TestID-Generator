@@ -1,0 +1,193 @@
+// Pins the public locator surface so 0.5.0/0.5.1 callers keep working.
+// If you change anything here intentionally, document it in the release notes.
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { generateLocators } from '../src/locators/generator.js';
+import { buildLocatorEntry, renderVariableName } from '../src/locators/render.js';
+import { LocatorsConfigSchema } from '../src/config/schema.js';
+import { createEmptyRegistry, type Registry, type RegistryEntry } from '../src/registry/schema.js';
+
+function entry(component: string, overrides: Partial<RegistryEntry> = {}): RegistryEntry {
+  return {
+    component,
+    tag: 'button',
+    element_type: 'native_button',
+    fingerprint: `${component}|button|Save`,
+    semantic: {
+      formcontrolname: null,
+      aria_label: null,
+      placeholder: null,
+      text_content: 'Save',
+      type: 'submit'
+    },
+    first_seen_version: 1,
+    last_seen_version: 1,
+    ...overrides
+  };
+}
+
+describe('config-schema backwards compat', () => {
+  it('parses an empty locators block (0.5.0 default)', () => {
+    const cfg = LocatorsConfigSchema.parse({});
+    expect(cfg.componentNaming).toBe('basename');
+    expect(cfg.lockNames).toBe(false);
+    expect(cfg.regenerateNames).toBe(false);
+    expect(cfg.mode).toBe('merge');
+    expect(cfg.variableFormat).toBe('{component}_{element}_{key}');
+  });
+
+  it('parses a 0.5.0-shape config (only mode + variableFormat)', () => {
+    const cfg = LocatorsConfigSchema.parse({
+      mode: 'overwrite',
+      variableFormat: '{component}_{element}'
+    });
+    expect(cfg.componentNaming).toBe('basename');
+    expect(cfg.mode).toBe('overwrite');
+    expect(cfg.variableFormat).toBe('{component}_{element}');
+  });
+
+  it('parses a 0.5.1-shape config (with lockNames) without componentNaming', () => {
+    const cfg = LocatorsConfigSchema.parse({
+      lockNames: true,
+      regenerateNames: false
+    });
+    expect(cfg.lockNames).toBe(true);
+    expect(cfg.componentNaming).toBe('basename');
+  });
+
+  it('still accepts the legacy overwrite boolean field', () => {
+    const cfg = LocatorsConfigSchema.parse({ overwrite: true });
+    expect(cfg.overwrite).toBe(true);
+    expect(cfg.mode).toBe('merge');
+  });
+});
+
+describe('buildLocatorEntry backwards compat', () => {
+  it('works with only 0.5.0 options (attributeName, xpathPrefix, variableFormat, entry)', () => {
+    const e = entry('src/app/login/login.component.html');
+    const result = buildLocatorEntry('login__button--send', {
+      attributeName: 'data-testid',
+      xpathPrefix: 'xpath:',
+      variableFormat: '{component}_{element}_{key}',
+      entry: e
+    });
+    expect(result.testid).toBe('login__button--send');
+    expect(result.selector).toBe(`xpath://*[@data-testid='login__button--send']`);
+    expect(result.variable).toMatch(/^login_/);
+  });
+
+  it('without a frozen name or component label, derives the same name as renderVariableName', () => {
+    const e = entry('src/app/login/login.component.html');
+    const a = buildLocatorEntry('login__button--send', {
+      attributeName: 'data-testid',
+      xpathPrefix: 'xpath:',
+      variableFormat: '{component}_{element}_{key}',
+      entry: e
+    });
+    const b = renderVariableName(e, 'login__button--send', '{component}_{element}_{key}');
+    expect(a.variable).toBe(b);
+  });
+});
+
+describe('generateLocators 0.5.0 call shape', () => {
+  let dir = '';
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'testid-bc-'));
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  const registry: Registry = {
+    ...createEmptyRegistry(1, '2026-04-29T10:00:00Z'),
+    entries: {
+      'login__button--send': entry('src/app/login/login.component.html'),
+      'order__th--id': entry('src/app/order-list/order-list.component.html', {
+        tag: 'th',
+        element_type: 'dom_th',
+        fingerprint: 'order|th|id',
+        semantic: {
+          formcontrolname: null,
+          aria_label: null,
+          placeholder: null,
+          text_content: 'id',
+          type: null
+        }
+      })
+    }
+  };
+
+  it('emits the same module count + filenames as 0.5.0 when called with bare options', async () => {
+    const result = await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    expect(result.writtenPaths).toHaveLength(2);
+    expect(result.modules.map((m) => m.filename).sort()).toEqual([
+      'login.py',
+      'order_list.py'
+    ]);
+  });
+
+  it('produces the legacy header + testid-managed marker on every line', async () => {
+    await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    const login = await fs.readFile(path.join(dir, 'login.py'), 'utf8');
+    expect(login).toContain('# Generated by testid-gen-locators - do not edit.');
+    expect(login).toContain('# Component: login');
+    expect(login).toMatch(/^login_\w+ = "xpath:\/\/\*\[@data-testid='login__button--send'\]"  # testid-managed$/m);
+  });
+
+  it('legacy overwrite: true still maps to mode: overwrite', async () => {
+    const target = path.join(dir, 'login.py');
+    await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    await fs.appendFile(target, '\nmy_manual = "xpath://manual"\n', 'utf8');
+    await generateLocators(registry, { outDir: dir, overwrite: true });
+    const after = await fs.readFile(target, 'utf8');
+    expect(after).not.toContain('my_manual');
+  });
+
+  it('legacy overwrite: false still maps to mode: refuse', async () => {
+    await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    await expect(
+      generateLocators(registry, { outDir: dir, overwrite: false })
+    ).rejects.toThrow(/Refusing to overwrite/);
+  });
+
+  it('returns a result without migrationReport when not requested', async () => {
+    const result = await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    expect(result.migrationReport).toBeUndefined();
+  });
+
+  it('returns a result without registryWritten when lockNames is off', async () => {
+    const result = await generateLocators(registry, { outDir: dir, mode: 'overwrite' });
+    expect(result.registryWritten).toBe(false);
+  });
+
+  it('default componentNaming behaves identically to pre-0.5.2: basename with silent collision', async () => {
+    const colliding: Registry = {
+      ...createEmptyRegistry(1, '2026-04-29T10:00:00Z'),
+      entries: {
+        'a__btn--save': entry('apps/a/src/user-card.component.html'),
+        'b__btn--ban': entry('apps/b/src/user-card.component.html', {
+          fingerprint: 'apps/b|btn|ban',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Ban',
+            type: null
+          }
+        })
+      }
+    };
+    const result = await generateLocators(colliding, { outDir: dir, mode: 'overwrite' });
+    expect(result.modules).toHaveLength(1);
+    expect(result.modules[0]!.filename).toBe('user_card.py');
+  });
+
+  it('renderVariableName with 3 args (no componentLabel) still works as in 0.5.0/0.5.1', () => {
+    const e = entry('src/app/login/login.component.html');
+    const v = renderVariableName(e, 'login__button--send', '{component}_{element}_{key}');
+    expect(v).toBe('login_nativeButton_save');
+  });
+});
