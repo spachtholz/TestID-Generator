@@ -286,6 +286,18 @@ export async function runTagger(
       activityMarkdownPath = activityWrite.markdownPath;
       activityJsonPath = activityWrite.jsonPath;
     }
+
+    // Write a structured collision dump whenever we detected unresolvable
+    // duplicates. The file groups warnings by fingerprint so the largest
+    // patterns float to the top — that's where the next fingerprint-tier
+    // extension should attack.
+    if (collisionWarnings.length > 0) {
+      await writeCollisionDump({
+        dir: registryOutputDir,
+        version: nextVersion,
+        warnings: collisionWarnings
+      });
+    }
   }
 
   if (config.loopWarnings && loopWarnings.length > 0) {
@@ -543,7 +555,9 @@ export function tagTemplateSource(
           column: span?.start.col != null ? span.start.col + 1 : 0,
           id,
           tag: c.detected.tag,
-          reason: formatHasHashSlot ? 'identical-fingerprint' : 'no-hash-placeholder'
+          reason: formatHasHashSlot ? 'identical-fingerprint' : 'no-hash-placeholder',
+          fingerprint: c.fingerprint.fingerprint,
+          semantic: c.fingerprint.semantic as unknown as Record<string, unknown>
         });
       }
     }
@@ -603,6 +617,62 @@ export function tagTemplateSource(
   }
 
   return { tagged, entries, collisions, loopWarnings, collisionWarnings };
+}
+
+/**
+ * Group unresolvable collisions by fingerprint and write them to
+ * `collisions.v{N}.json`. Largest groups first so a glance at the file
+ * tells you which template-pattern is responsible for the bulk of the
+ * collisions and what the missing differentiator should be.
+ */
+async function writeCollisionDump(args: {
+  dir: string;
+  version: number;
+  warnings: readonly CollisionWarning[];
+}): Promise<void> {
+  const { dir, version, warnings } = args;
+
+  const groups = new Map<string, CollisionWarning[]>();
+  for (const w of warnings) {
+    const list = groups.get(w.fingerprint) ?? [];
+    list.push(w);
+    groups.set(w.fingerprint, list);
+  }
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const dump = {
+    version,
+    total_collisions: warnings.length,
+    unique_fingerprints: groups.size,
+    groups: sorted.map(([fingerprint, members]) => ({
+      fingerprint,
+      count: members.length,
+      // Carry one fully-detailed example (with the semantic snapshot) so the
+      // user can see WHAT got extracted — that's how we diagnose missing
+      // tiers. Subsequent members are listed location-only to keep the file
+      // navigable.
+      example: {
+        component: members[0]!.componentPath,
+        line: members[0]!.line,
+        column: members[0]!.column,
+        tag: members[0]!.tag,
+        id: members[0]!.id,
+        reason: members[0]!.reason,
+        semantic: members[0]!.semantic
+      },
+      additional_locations: members.slice(1, 11).map((m) => ({
+        component: m.componentPath,
+        line: m.line,
+        column: m.column,
+        tag: m.tag
+      })),
+      omitted: Math.max(0, members.length - 11)
+    }))
+  };
+
+  await fs.mkdir(dir, { recursive: true });
+  const dumpPath = path.join(dir, `collisions.v${version}.json`);
+  await fs.writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
 }
 
 /**

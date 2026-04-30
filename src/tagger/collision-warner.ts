@@ -15,6 +15,14 @@ export interface CollisionWarning {
   /** Tag name of the offending element. */
   tag: string;
   reason: CollisionReason;
+  /**
+   * Full fingerprint string of the colliding element. Two elements with the
+   * same fingerprint will produce the same testid even with hash-suffix; the
+   * fingerprint is the artifact that needs to differ.
+   */
+  fingerprint: string;
+  /** Snapshot of all extracted semantic data — used by the diagnostic dump. */
+  semantic?: Record<string, unknown>;
 }
 
 export interface FormatOptions {
