@@ -8,6 +8,7 @@ import {
   type TmplAstTemplate,
   type TmplAstTextAttribute,
   type TmplAstBoundAttribute,
+  type TmplAstBoundEvent,
   type TmplAstBoundText,
   type TmplAstText,
   type TmplAstIfBlock,
@@ -65,7 +66,19 @@ export interface LoopContext {
   readonly label: string;
 }
 
-export type VisitFn = (node: VisitedElement, loop: LoopContext | null) => void;
+/**
+ * Visitor receives the visited element, the active loop context (if any),
+ * and the chain of element parents from the document root down to the
+ * direct parent. The chain is empty for top-level elements.
+ *
+ * `parents` is provided as a fresh array per call; callers may keep a
+ * reference but should treat it as immutable.
+ */
+export type VisitFn = (
+  node: VisitedElement,
+  loop: LoopContext | null,
+  parents: readonly VisitedElement[]
+) => void;
 
 /**
  * Walk the AST, invoking `visit` for every element-like node.
@@ -73,57 +86,63 @@ export type VisitFn = (node: VisitedElement, loop: LoopContext | null) => void;
  * Handles control-flow blocks (`@if`/`@for`/`@switch`/`@defer`) and the
  * `<ng-template>` template node. Tracks whether the current subtree is
  * rendered inside a loop (`*ngFor`, `@for`, PrimeNG body/item templates) and
- * passes that info to the visitor.
+ * passes that info to the visitor along with the parent chain.
  */
 export function walkElements(
   nodes: readonly TmplAstNode[] | undefined,
   visit: VisitFn,
-  loop: LoopContext | null = null
+  loop: LoopContext | null = null,
+  parents: readonly VisitedElement[] = []
 ): void {
   if (!nodes) return;
   for (const node of nodes) {
-    walkNode(node, visit, loop);
+    walkNode(node, visit, loop, parents);
   }
 }
 
-function walkNode(node: TmplAstNode, visit: VisitFn, loop: LoopContext | null): void {
+function walkNode(
+  node: TmplAstNode,
+  visit: VisitFn,
+  loop: LoopContext | null,
+  parents: readonly VisitedElement[]
+): void {
   if (isElementLike(node)) {
     // ng-template wrappers may themselves introduce a loop for their children.
     const childLoop = isTemplateNode(node) ? detectTemplateLoop(node) ?? loop : loop;
-    visit(node, loop);
-    walkElements(node.children, visit, childLoop);
+    visit(node, loop, parents);
+    walkElements(node.children, visit, childLoop, [...parents, node]);
     return;
   }
 
   if (isIfBlock(node)) {
     for (const branch of node.branches) {
-      walkElements(branch.children, visit, loop);
+      walkElements(branch.children, visit, loop, parents);
     }
     return;
   }
 
   if (isForLoop(node)) {
     const forLoop: LoopContext = { kind: 'forBlock', label: '@for' };
-    walkElements(node.children, visit, forLoop);
+    walkElements(node.children, visit, forLoop, parents);
     // the @empty block only renders once, so it's not a loop context
     if (node.empty) {
-      walkElements(node.empty.children, visit, loop);
+      walkElements(node.empty.children, visit, loop, parents);
     }
     return;
   }
 
   if (isSwitchBlock(node)) {
     for (const c of node.cases) {
-      walkElements(c.children, visit, loop);
+      walkElements(c.children, visit, loop, parents);
     }
     return;
   }
 
   if (isDeferredBlock(node)) {
-    walkElements(node.children, visit, loop);
-    if (node.placeholder) walkElements(node.placeholder.children, visit, loop);
-    if (node.loading) walkElements(node.loading.children, visit, loop);
-    if (node.error) walkElements(node.error.children, visit, loop);
+    walkElements(node.children, visit, loop, parents);
+    if (node.placeholder) walkElements(node.placeholder.children, visit, loop, parents);
+    if (node.loading) walkElements(node.loading.children, visit, loop, parents);
+    if (node.error) walkElements(node.error.children, visit, loop, parents);
     return;
   }
 
@@ -221,6 +240,10 @@ export function isBoundAttribute(x: unknown): x is TmplAstBoundAttribute {
   return isCtor(x, 'BoundAttribute');
 }
 
+export function isBoundEvent(x: unknown): x is TmplAstBoundEvent {
+  return isCtor(x, 'BoundEvent');
+}
+
 export function isText(x: unknown): x is TmplAstText {
   return isCtor(x, 'Text');
 }
@@ -312,4 +335,464 @@ export function getTagName(element: VisitedElement): string {
   if (isElement(element)) return element.name;
   // ng-template
   return 'ng-template';
+}
+
+/* ---------------------------------------------------------------------- *
+ * Tier 1+2: static attribute snapshots
+ * ---------------------------------------------------------------------- */
+
+/**
+ * All statically-authored attributes on the element as `name → value` pairs.
+ * Names are lowercased. The attribute that holds the testid itself
+ * (`attributeName`, default `data-testid`) is excluded so it never feeds
+ * back into its own fingerprint.
+ *
+ * Bound `[input]="'literal'"` is also collected here when the bound value is
+ * a plain string literal, because semantically that's identical to a static
+ * attribute - the developer just wrote it with a binding for type-correctness.
+ */
+export function getAllStaticAttributes(
+  element: VisitedElement,
+  options: { excludeName?: string } = {}
+): Map<string, string> {
+  const exclude = options.excludeName?.toLowerCase();
+  const result = new Map<string, string>();
+  for (const attr of element.attributes ?? []) {
+    const name = attr.name.toLowerCase();
+    if (exclude && name === exclude) continue;
+    if (typeof attr.value === 'string') {
+      result.set(name, attr.value);
+    }
+  }
+  // [input]="'literal'" — Angular parses the value as a LiteralPrimitive.
+  for (const input of element.inputs ?? []) {
+    const name = input.name.toLowerCase();
+    if (exclude && name === exclude) continue;
+    if (result.has(name)) continue;
+    const literal = extractStringLiteral(input.value);
+    if (literal !== null) result.set(name, literal);
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Tier 3: bound-input identifiers
+ * ---------------------------------------------------------------------- */
+
+/**
+ * For each bound `[input]="expression"`, return the input name mapped to the
+ * dotted identifier path the binding reads. Function calls, operations,
+ * literals, etc. are skipped — only "this is a variable" expressions are
+ * extracted because a renamed variable is a strong, intentional signal.
+ *
+ * Two-way bindings `[(model)]="value"` are exposed to Angular as a
+ * BoundAttribute whose `name` ends in `Change` plus a regular property; we
+ * collect the property only.
+ */
+export function getBoundIdentifiers(element: VisitedElement): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const input of element.inputs ?? []) {
+    const name = input.name.toLowerCase();
+    // Skip the `Change`-half of two-way bindings.
+    if (name.endsWith('change')) continue;
+    // Skip Angular structural / styling bindings — they generate noise without
+    // distinguishing usage sites.
+    if (name === 'ngclass' || name === 'ngstyle' || name === 'ngfor' || name === 'ngif') {
+      continue;
+    }
+    const path = extractDottedPath(input.value);
+    if (path !== null) result.set(name, path);
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Tier 4: event handler function names
+ * ---------------------------------------------------------------------- */
+
+/**
+ * For each `(event)="handler(...)"`, return the event name mapped to the
+ * function name. Lambdas, assignments, `$event.stopPropagation()`-style
+ * meta-calls are skipped — only named function calls count.
+ */
+export function getEventHandlerNames(element: VisitedElement): Map<string, string> {
+  const result = new Map<string, string>();
+  const outputs = (element as TmplAstElement).outputs ?? [];
+  for (const output of outputs) {
+    if (!isBoundEvent(output)) continue;
+    const fn = extractCallTarget(output.handler);
+    if (fn !== null) result.set(output.name.toLowerCase(), fn);
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Tier 5: interpolation data (i18n keys + bound-text paths)
+ * ---------------------------------------------------------------------- */
+
+export interface InterpolationData {
+  /** String literals fed into translation pipes (e.g. `'order.save'`). */
+  i18nKeys: string[];
+  /** Property paths from interpolations (e.g. `order.id`). */
+  boundTextPaths: string[];
+}
+
+/**
+ * Pipe names treated as "translation": their first input is taken as a key.
+ * Includes ngx-translate (`translate`), Transloco (`transloco`/`t`) and the
+ * Angular built-in i18n directive name as a defensive fallback.
+ */
+const I18N_PIPE_NAMES: ReadonlySet<string> = new Set([
+  'translate',
+  'transloco',
+  't',
+  'i18n'
+]);
+
+/** Inspect every BoundText child of `element` for interpolation expressions. */
+export function getInterpolationData(element: VisitedElement): InterpolationData {
+  const i18nKeys: string[] = [];
+  const boundTextPaths: string[] = [];
+  for (const child of element.children ?? []) {
+    if (!isBoundText(child)) continue;
+    collectFromExpression(child.value, i18nKeys, boundTextPaths);
+  }
+  return {
+    i18nKeys: dedup(i18nKeys),
+    boundTextPaths: dedup(boundTextPaths)
+  };
+}
+
+function dedup(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Surrounding-context anchors
+ * ---------------------------------------------------------------------- */
+
+export interface ContextAnchors {
+  label_for: string | null;
+  wrapper_label: string | null;
+  fieldset_legend: string | null;
+  preceding_heading: string | null;
+  wrapper_formcontrolname: string | null;
+  aria_labelledby_text: string | null;
+}
+
+/** Element + immediate parent chain → surrounding-context anchors. */
+export function resolveContextAnchors(
+  element: VisitedElement,
+  parents: readonly VisitedElement[],
+  rootNodes: readonly TmplAstNode[]
+): ContextAnchors {
+  const result: ContextAnchors = {
+    label_for: null,
+    wrapper_label: null,
+    fieldset_legend: null,
+    preceding_heading: null,
+    wrapper_formcontrolname: null,
+    aria_labelledby_text: null
+  };
+
+  const ownId = findAttribute(element, 'id')?.value;
+  if (ownId) {
+    result.label_for = findLabelForId(rootNodes, ownId);
+  }
+
+  const ariaLabelledBy = findAttribute(element, 'aria-labelledby')?.value;
+  if (ariaLabelledBy) {
+    const referenced = ariaLabelledBy.split(/\s+/).filter(Boolean);
+    const texts: string[] = [];
+    for (const refId of referenced) {
+      const text = findElementTextById(rootNodes, refId);
+      if (text) texts.push(text);
+    }
+    if (texts.length > 0) result.aria_labelledby_text = texts.join(' ');
+  }
+
+  // walk up the parent chain looking for wrapper-level anchors. We stop at
+  // logical section boundaries (form / section / fieldset / dialog / card /
+  // role=region) so a heading on the page header isn't claimed by every
+  // form field on the page.
+  for (let i = parents.length - 1; i >= 0; i--) {
+    const parent = parents[i]!;
+    const tag = getTagName(parent).toLowerCase();
+
+    // wrapper-level form-control name
+    if (result.wrapper_formcontrolname === null) {
+      const fcn = findAttribute(parent, 'formcontrolname')?.value;
+      if (fcn) result.wrapper_formcontrolname = fcn;
+    }
+
+    // wrapper-component label/title/header/caption inputs
+    if (result.wrapper_label === null) {
+      const wrapperLabel = pickFirst(parent, [
+        'label',
+        'title',
+        'header',
+        'caption'
+      ]);
+      if (wrapperLabel) result.wrapper_label = wrapperLabel;
+    }
+
+    // <fieldset><legend>…</legend></fieldset>
+    if (result.fieldset_legend === null && tag === 'fieldset') {
+      const legend = findChildText(parent, 'legend');
+      if (legend) result.fieldset_legend = legend;
+    }
+
+    // <mat-form-field><mat-label>…</mat-label></…>
+    if (result.wrapper_label === null) {
+      const matLabel = findChildText(parent, 'mat-label');
+      if (matLabel) result.wrapper_label = matLabel;
+    }
+
+    // <p-floatlabel> with a child <label>
+    if (result.wrapper_label === null && tag === 'p-floatlabel') {
+      const lbl = findChildText(parent, 'label');
+      if (lbl) result.wrapper_label = lbl;
+    }
+
+    // hard stop: don't propagate past these section boundaries
+    if (isSectionBoundary(parent, tag)) break;
+  }
+
+  // preceding heading — search direct sibling list of the immediate parent.
+  // No parent → we're at the root of the template; use the rootNodes themselves.
+  const siblings = parents.length > 0
+    ? (parents[parents.length - 1]!.children ?? [])
+    : rootNodes;
+  result.preceding_heading = findPrecedingHeading(siblings, element);
+
+  return result;
+}
+
+/* ---------------------------------------------------------------------- *
+ * AST expression helpers (private)
+ * ---------------------------------------------------------------------- */
+
+interface AstLike {
+  ast?: unknown;
+  receiver?: unknown;
+  name?: unknown;
+  expressions?: unknown;
+  exp?: unknown;
+  value?: unknown;
+  args?: unknown;
+}
+
+/** Strip the ASTWithSource wrapper if present. */
+function unwrapAst(node: unknown): unknown {
+  if (node && typeof node === 'object' && 'ast' in (node as object) && (node as AstLike).ast) {
+    return (node as AstLike).ast;
+  }
+  return node;
+}
+
+/**
+ * Return the dotted identifier the expression reads (`order.customer.name`)
+ * or null if the expression is anything more complex than a property chain.
+ */
+function extractDottedPath(node: unknown): string | null {
+  let cur = unwrapAst(node);
+  const segments: string[] = [];
+  while (cur && typeof cur === 'object') {
+    if (isCtor(cur, 'PropertyRead')) {
+      const c = cur as AstLike;
+      if (typeof c.name === 'string') segments.unshift(c.name);
+      cur = c.receiver;
+      continue;
+    }
+    if (isCtor(cur, 'ImplicitReceiver', 'ThisReceiver')) {
+      // root of the chain — done
+      return segments.length > 0 ? segments.join('.') : null;
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * If the expression is a single-arg function call against `this`/the
+ * implicit receiver (`saveOrder()`, `saveOrder($event)`), return the
+ * function name; otherwise null.
+ */
+function extractCallTarget(node: unknown): string | null {
+  const inner = unwrapAst(node);
+  if (!isCtor(inner, 'Call')) return null;
+  const c = inner as AstLike;
+  const receiver = unwrapAst(c.receiver);
+  if (!isCtor(receiver, 'PropertyRead')) return null;
+  const r = receiver as AstLike;
+  if (!isCtor(r.receiver, 'ImplicitReceiver', 'ThisReceiver')) {
+    // method on a member like `service.save()` — accept and use the method name
+  }
+  return typeof r.name === 'string' ? r.name : null;
+}
+
+/** If the bound expression is a string literal, return its value. */
+function extractStringLiteral(node: unknown): string | null {
+  const inner = unwrapAst(node);
+  if (!isCtor(inner, 'LiteralPrimitive')) return null;
+  const v = (inner as AstLike).value;
+  return typeof v === 'string' ? v : null;
+}
+
+/**
+ * Walk the (Interpolation/expression) AST collecting i18n keys (string
+ * literals fed into known translation pipes) and property paths.
+ */
+function collectFromExpression(
+  node: unknown,
+  i18nKeys: string[],
+  boundTextPaths: string[]
+): void {
+  const cur = unwrapAst(node);
+  if (!cur || typeof cur !== 'object') return;
+
+  if (isCtor(cur, 'Interpolation')) {
+    const exprs = (cur as AstLike).expressions;
+    if (Array.isArray(exprs)) {
+      for (const e of exprs) collectFromExpression(e, i18nKeys, boundTextPaths);
+    }
+    return;
+  }
+
+  if (isCtor(cur, 'BindingPipe')) {
+    const c = cur as AstLike;
+    const pipeName = typeof c.name === 'string' ? c.name.toLowerCase() : '';
+    const inner = unwrapAst(c.exp);
+    if (I18N_PIPE_NAMES.has(pipeName) && isCtor(inner, 'LiteralPrimitive')) {
+      const v = (inner as AstLike).value;
+      if (typeof v === 'string') i18nKeys.push(v);
+      return; // don't descend further; the literal is the entire payload
+    }
+    // unknown pipe — descend into the input expression so e.g.
+    // `{{ user.name | uppercase }}` still yields `user.name`.
+    collectFromExpression(c.exp, i18nKeys, boundTextPaths);
+    return;
+  }
+
+  if (isCtor(cur, 'PropertyRead')) {
+    const path = extractDottedPath(cur);
+    if (path) boundTextPaths.push(path);
+    return;
+  }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Context-resolver helpers (private)
+ * ---------------------------------------------------------------------- */
+
+const SECTION_BOUNDARY_TAGS: ReadonlySet<string> = new Set([
+  'form',
+  'section',
+  'fieldset',
+  'dialog',
+  'mat-card',
+  'p-card',
+  'p-dialog',
+  'p-confirmdialog',
+  'p-dynamicdialog',
+  'mat-dialog-content'
+]);
+
+function isSectionBoundary(element: VisitedElement, tagLower: string): boolean {
+  if (SECTION_BOUNDARY_TAGS.has(tagLower)) return true;
+  const role = findAttribute(element, 'role')?.value?.toLowerCase();
+  if (role === 'region' || role === 'group') return true;
+  return false;
+}
+
+function pickFirst(element: VisitedElement, names: readonly string[]): string | null {
+  for (const name of names) {
+    const v = findAttribute(element, name)?.value;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  }
+  return null;
+}
+
+function findChildText(element: VisitedElement, childTag: string): string | null {
+  const target = childTag.toLowerCase();
+  for (const child of element.children ?? []) {
+    if (!isElementLike(child)) continue;
+    if (getTagName(child).toLowerCase() === target) {
+      const text = getStaticTextContent(child);
+      if (text) return text;
+    }
+  }
+  return null;
+}
+
+function findPrecedingHeading(
+  siblings: readonly TmplAstNode[],
+  target: VisitedElement
+): string | null {
+  let lastHeading: string | null = null;
+  for (const sib of siblings) {
+    if (sib === target) return lastHeading;
+    if (!isElementLike(sib)) continue;
+    const tag = getTagName(sib).toLowerCase();
+    if (/^h[1-6]$/.test(tag)) {
+      const text = getStaticTextContent(sib);
+      if (text) lastHeading = text;
+    }
+  }
+  return lastHeading;
+}
+
+function findLabelForId(nodes: readonly TmplAstNode[], id: string): string | null {
+  let result: string | null = null;
+  const visit = (children: readonly TmplAstNode[]): void => {
+    if (result !== null) return;
+    for (const child of children) {
+      if (result !== null) return;
+      if (isElementLike(child)) {
+        if (getTagName(child).toLowerCase() === 'label') {
+          const forAttr = findAttribute(child, 'for')?.value;
+          if (forAttr === id) {
+            const text = getStaticTextContent(child);
+            if (text) {
+              result = text;
+              return;
+            }
+          }
+        }
+        visit(child.children ?? []);
+      }
+    }
+  };
+  visit(nodes);
+  return result;
+}
+
+function findElementTextById(nodes: readonly TmplAstNode[], id: string): string | null {
+  let result: string | null = null;
+  const visit = (children: readonly TmplAstNode[]): void => {
+    if (result !== null) return;
+    for (const child of children) {
+      if (result !== null) return;
+      if (isElementLike(child)) {
+        const elId = findAttribute(child, 'id')?.value;
+        if (elId === id) {
+          const text = getStaticTextContent(child);
+          if (text) {
+            result = text;
+            return;
+          }
+        }
+        visit(child.children ?? []);
+      }
+    }
+  };
+  visit(nodes);
+  return result;
 }

@@ -7,6 +7,7 @@ import type { Registry, RegistryEntry, SemanticAttributes } from './schema.js';
 export type RegistryProfile = 'minimal' | 'standard' | 'full';
 
 export type SemanticFieldName =
+  // Tier 0
   | 'formcontrolname'
   | 'name'
   | 'routerlink'
@@ -14,7 +15,27 @@ export type SemanticFieldName =
   | 'placeholder'
   | 'text_content'
   | 'type'
-  | 'role';
+  | 'role'
+  // Tier 1
+  | 'title'
+  | 'alt'
+  | 'value'
+  | 'html_id'
+  | 'href'
+  | 'src'
+  | 'html_for'
+  | 'label'
+  // Tier 2
+  | 'static_attributes'
+  // Tier 3
+  | 'bound_identifiers'
+  // Tier 4
+  | 'event_handlers'
+  // Tier 5
+  | 'i18n_keys'
+  | 'bound_text_paths'
+  // Tier 8
+  | 'context';
 
 export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'formcontrolname',
@@ -24,7 +45,21 @@ export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'placeholder',
   'text_content',
   'type',
-  'role'
+  'role',
+  'title',
+  'alt',
+  'value',
+  'html_id',
+  'href',
+  'src',
+  'html_for',
+  'label',
+  'static_attributes',
+  'bound_identifiers',
+  'event_handlers',
+  'i18n_keys',
+  'bound_text_paths',
+  'context'
 ];
 
 /** Matches the Zod schema in tagger/config-loader.ts. */
@@ -58,7 +93,22 @@ const PROFILE_DEFAULTS: Record<RegistryProfile, ResolvedRegistryOptions> = {
     includeSource: true,
     includeHistory: false,
     includeDynamicChildren: true,
-    semanticFields: ['formcontrolname', 'aria_label', 'placeholder', 'text_content']
+    semanticFields: [
+      // Tier 0
+      'formcontrolname',
+      'aria_label',
+      'placeholder',
+      'text_content',
+      // Tier 1
+      'title',
+      'label',
+      // Tier 4 (event handlers are highly informative)
+      'event_handlers',
+      // Tier 5 (i18n is the most stable text-content anchor)
+      'i18n_keys',
+      // Tier 8 (context is essential for reusable components)
+      'context'
+    ]
   },
   full: {
     includeSemantics: true,
@@ -131,22 +181,43 @@ function filterEntry(
   return out;
 }
 
+const TIER0_DEFAULTS: SemanticAttributes = {
+  formcontrolname: null,
+  aria_label: null,
+  placeholder: null,
+  text_content: null,
+  type: null
+};
+
 function filterSemantic(
   semantic: SemanticAttributes,
   keep: readonly SemanticFieldName[]
 ): SemanticAttributes {
-  const out: SemanticAttributes = {
-    formcontrolname: null,
-    aria_label: null,
-    placeholder: null,
-    text_content: null,
-    type: null
-  };
+  // Build the filtered output as a loose record so we don't have to fight the
+  // SemanticAttributes index signature for every value class. The cast at the
+  // return is safe because every key fed into `out` is a real semantic field
+  // name and every value type matches what the registry serializer expects.
+  const out: Record<string, unknown> = { ...TIER0_DEFAULTS };
   for (const key of keep) {
-    const value = semantic[key];
-    if (value !== undefined) {
-      out[key] = value ?? null;
+    const value = (semantic as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    // Treat empty containers as "absent" so the JSON stays compact.
+    if (value !== null && typeof value === 'object') {
+      if (Array.isArray(value)) {
+        if (value.length === 0) continue;
+        out[key] = value;
+      } else {
+        if (isEmptyObject(value as object)) continue;
+        out[key] = value;
+      }
+    } else {
+      out[key] = value;
     }
   }
-  return out;
+  return out as SemanticAttributes;
+}
+
+function isEmptyObject(value: object): boolean {
+  for (const _ in value) return false;
+  return true;
 }

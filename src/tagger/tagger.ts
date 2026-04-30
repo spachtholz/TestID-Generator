@@ -166,12 +166,25 @@ export async function runTagger(
     newContent: string;
   }
   const pendingWrites: PendingWrite[] = [];
-  for (const file of files) {
+
+  // Pre-resolve disambiguated component slugs across the entire run when the
+  // user opted into it. Without this, two `dialog.component.html` files in
+  // different apps of a monorepo would both produce `dialog__…` testids and
+  // overwrite each other in the registry map.
+  const relFromCwds = files.map((f) => path.relative(cwd, f).replace(/\\/g, '/'));
+  const componentNameMap = resolveTaggerComponentNames(
+    files,
+    relFromCwds,
+    config.componentNaming
+  );
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
     const original = await fs.readFile(file, 'utf8');
     const relFromCwd = path.relative(cwd, file);
     const relFromRoot = path.relative(rootDir, file);
     const result = tagTemplateSource(original, {
-      componentName: componentNameFromPath(file),
+      componentName: componentNameMap.get(file) ?? componentNameFromPath(file),
       componentPath: relFromCwd,
       hashLength: config.hashLength,
       config
@@ -424,7 +437,7 @@ export function tagTemplateSource(
   const parsed = parseAngularTemplate(source, { url: options.componentPath });
 
   const candidates: TagCandidate[] = [];
-  walkElements(parsed.ast, (el, loop) => {
+  walkElements(parsed.ast, (el, loop, parents) => {
     const detected = detectElement(el, config);
     if (!detected) return;
 
@@ -437,7 +450,11 @@ export function tagTemplateSource(
 
     const existing = findAttribute(el, config.attributeName);
     const alreadyTagged = !!existing;
-    const fingerprint = generateFingerprint(el);
+    const fingerprint = generateFingerprint(el, {
+      parents,
+      rootNodes: parsed.ast,
+      attributeName: config.attributeName
+    });
 
     const insertionOffset = computeInsertionOffset(source, el);
     if (insertionOffset < 0) return;
@@ -539,21 +556,13 @@ export function tagTemplateSource(
   const entries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>> = {};
   for (const c of candidates) {
     const dynSpec = getDynamicChildrenSpec(c.detected.tag);
+    const snap = c.fingerprint.semantic;
     const entry: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'> = {
       component: options.componentPath.replace(/\\/g, '/'),
       tag: c.detected.tag,
       element_type: c.detected.longType,
       fingerprint: c.fingerprint.fingerprint,
-      semantic: {
-        formcontrolname: c.fingerprint.semantic.formcontrolname,
-        name: c.fingerprint.semantic.name,
-        routerlink: c.fingerprint.semantic.routerlink,
-        aria_label: c.fingerprint.semantic.aria_label,
-        placeholder: c.fingerprint.semantic.placeholder,
-        text_content: c.fingerprint.semantic.text_content,
-        type: c.fingerprint.semantic.type,
-        role: c.fingerprint.semantic.role
-      },
+      semantic: buildSemanticForRegistry(snap),
       source: c.source
     };
     if (dynSpec) {
@@ -594,6 +603,150 @@ export function tagTemplateSource(
   }
 
   return { tagged, entries, collisions, loopWarnings, collisionWarnings };
+}
+
+/**
+ * Build the component-slug-per-file map for a tagger run.
+ *
+ * - 'basename' (default): identical to the legacy `componentNameFromPath`.
+ * - 'basename-strict': throws on basename collisions across the run.
+ * - 'disambiguate': prefixes the colliding basenames with their uncommon path
+ *   segment, mirroring the locator-generator's behavior so the two tools stay
+ *   in lockstep.
+ */
+function resolveTaggerComponentNames(
+  files: readonly string[],
+  componentPaths: readonly string[],
+  mode: 'basename' | 'basename-strict' | 'disambiguate'
+): Map<string, string> {
+  const out = new Map<string, string>();
+  if (mode === 'basename') {
+    for (let i = 0; i < files.length; i++) {
+      out.set(files[i]!, componentNameFromPath(files[i]!));
+    }
+    return out;
+  }
+
+  // Group by basename slug and disambiguate per group.
+  const groups = new Map<string, { file: string; relPath: string }[]>();
+  for (let i = 0; i < files.length; i++) {
+    const slug = componentNameFromPath(files[i]!);
+    const list = groups.get(slug) ?? [];
+    list.push({ file: files[i]!, relPath: componentPaths[i]! });
+    groups.set(slug, list);
+  }
+
+  for (const [slug, group] of groups) {
+    if (group.length === 1) {
+      out.set(group[0]!.file, slug);
+      continue;
+    }
+    if (mode === 'basename-strict') {
+      throw new Error(
+        `[tagger] component-name collision on "${slug}":\n  ` +
+          group.map((g) => g.relPath).join('\n  ') +
+          `\nSet componentNaming: 'disambiguate' (or rename one of the templates).`
+      );
+    }
+    // 'disambiguate' — derive a unique prefix from path segments
+    const labels = disambiguatePathGroup(group.map((g) => g.relPath), slug);
+    for (let i = 0; i < group.length; i++) {
+      out.set(group[i]!.file, labels[i]!);
+    }
+  }
+  return out;
+}
+
+function disambiguatePathGroup(paths: readonly string[], slug: string): string[] {
+  const segArrays = paths.map((p) => p.split('/'));
+  const minLen = Math.min(...segArrays.map((s) => s.length));
+
+  let suffix = 0;
+  while (suffix < minLen) {
+    const ref = segArrays[0]![segArrays[0]!.length - 1 - suffix];
+    if (!segArrays.every((s) => s[s.length - 1 - suffix] === ref)) break;
+    suffix++;
+  }
+
+  let prefix = 0;
+  while (prefix < minLen - suffix) {
+    const ref = segArrays[0]![prefix];
+    if (!segArrays.every((s) => s[prefix] === ref)) break;
+    prefix++;
+  }
+
+  const labels: string[] = [];
+  for (const segs of segArrays) {
+    const middle = segs.slice(prefix, segs.length - suffix);
+    labels.push(middle.length === 0 ? slug : `${middle.join('-')}-${slug}`);
+  }
+  // ensure uniqueness; if disambiguation didn't separate them, fall back to
+  // including the full prefix
+  const seen = new Set<string>();
+  for (const l of labels) {
+    if (seen.has(l)) {
+      return segArrays.map((segs) => {
+        const middle = segs.slice(0, segs.length - suffix);
+        return `${middle.join('-')}-${slug}`;
+      });
+    }
+    seen.add(l);
+  }
+  return labels;
+}
+
+/**
+ * Translate the in-memory snapshot into the registry-shaped `semantic` object.
+ * Empty containers are dropped so the persisted JSON stays compact, but every
+ * Tier-0 field is always emitted (existing readers expect them).
+ */
+function buildSemanticForRegistry(
+  snap: Fingerprint['semantic']
+): RegistryEntry['semantic'] {
+  const out: RegistryEntry['semantic'] = {
+    formcontrolname: snap.formcontrolname,
+    name: snap.name,
+    routerlink: snap.routerlink,
+    aria_label: snap.aria_label,
+    placeholder: snap.placeholder,
+    text_content: snap.text_content,
+    type: snap.type,
+    role: snap.role
+  };
+  // Tier 1 — emit only when present
+  if (snap.title !== null) out.title = snap.title;
+  if (snap.alt !== null) out.alt = snap.alt;
+  if (snap.value !== null) out.value = snap.value;
+  if (snap.html_id !== null) out.html_id = snap.html_id;
+  if (snap.href !== null) out.href = snap.href;
+  if (snap.src !== null) out.src = snap.src;
+  if (snap.html_for !== null) out.html_for = snap.html_for;
+  if (snap.label !== null) out.label = snap.label;
+  // Tier 2/3/4 — drop empties to keep the JSON tight
+  if (Object.keys(snap.static_attributes).length > 0) {
+    out.static_attributes = { ...snap.static_attributes };
+  }
+  if (Object.keys(snap.bound_identifiers).length > 0) {
+    out.bound_identifiers = { ...snap.bound_identifiers };
+  }
+  if (Object.keys(snap.event_handlers).length > 0) {
+    out.event_handlers = { ...snap.event_handlers };
+  }
+  // Tier 5
+  if (snap.i18n_keys.length > 0) out.i18n_keys = [...snap.i18n_keys];
+  if (snap.bound_text_paths.length > 0) out.bound_text_paths = [...snap.bound_text_paths];
+  // Tier 8 — emit only when at least one anchor was found
+  if (
+    snap.context.label_for !== null ||
+    snap.context.wrapper_label !== null ||
+    snap.context.fieldset_legend !== null ||
+    snap.context.preceding_heading !== null ||
+    snap.context.wrapper_formcontrolname !== null ||
+    snap.context.aria_labelledby_text !== null
+  ) {
+    out.context = { ...snap.context };
+  }
+  return out;
 }
 
 /**

@@ -108,6 +108,16 @@ export const TaggerConfigSchema = z.object({
   idFormat: z.string().min(1).default('{component}__{element}--{key}{hash:-}'),
   /** force {hash} to always render, not just on collisions */
   alwaysHash: z.boolean().default(false),
+  /**
+   * How to derive the `{component}` slug when several templates share a basename.
+   * - 'basename'      — use the basename as-is (legacy behavior, may collide)
+   * - 'basename-strict' — fail loudly when basenames collide
+   * - 'disambiguate'  — prefix the colliding paths' uncommon segments
+   *                     (`apps/admin/dialog.component.html` → `admin-dialog`)
+   */
+  componentNaming: z
+    .enum(['basename', 'basename-strict', 'disambiguate'])
+    .default('basename'),
   // TODO: ontology export profile once feature/owl-export lands back
   registry: z
     .object({
