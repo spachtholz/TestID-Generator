@@ -34,10 +34,14 @@ describe('generateFingerprint', () => {
     expect(fp.primaryValue).toBe('Save');
   });
 
-  it('ignores interpolated text in favor of nothing (FR-1.6)', () => {
+  it('extracts the bound identifier from a `{{ varName }}` interpolation (Tier 5)', () => {
+    // Pre-Tier-5 the fingerprint had no access to bound text — every
+    // `{{ … }}` template button collided. Tier 5 surfaces the variable name
+    // (or i18n key, see other tests) so distinct buttons get distinct keys.
     const el = firstElement(`<button>{{ saveLabel }}</button>`, 'button');
     const fp = generateFingerprint(el);
-    expect(fp.primaryValue).toBeNull();
+    expect(fp.primaryKey).toBe('bound_text_path');
+    expect(fp.primaryValue).toBe('saveLabel');
   });
 
   it('produces a deterministic fingerprint string', () => {
