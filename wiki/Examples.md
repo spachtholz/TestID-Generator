@@ -12,6 +12,7 @@ Before/after snapshots for each stage of the tool.
 - [6. customTagMap in action](#6-customtagmap-in-action)
 - [7. Hash-only testids with readable locator names](#7-hash-only-testids-with-readable-locator-names)
 - [8. Mixing manual and generated locators](#8-mixing-manual-and-generated-locators)
+- [9. Resolving collisions with sibling-index suffixes](#9-resolving-collisions-with-sibling-index-suffixes)
 
 ---
 
@@ -419,3 +420,31 @@ If you want to discard manual content and start fresh:
 ```bash
 testid gen-locators testids.latest.json --out-dir tests/locators --mode overwrite
 ```
+
+---
+
+## 9. Resolving collisions with sibling-index suffixes
+
+When two elements in the same template produce the same semantic id, the default `auto` strategy assigns readable suffixes in source order. This template:
+
+```html
+<div>
+  <button>Save</button>
+  <button>Save</button>
+  <button>Save</button>
+</div>
+```
+
+becomes:
+
+```html
+<div data-testid="order__div--button-button-button">
+  <button data-testid="order__button--save--1">Save</button>
+  <button data-testid="order__button--save--2">Save</button>
+  <button data-testid="order__button--save--3">Save</button>
+</div>
+```
+
+The numbering follows the order the elements appear in the source file. As long as the source is unchanged, re-runs always produce the same ids. The chosen suffix is also stored on the registry entry, which keeps Robot Framework variable names stable when locked with `lockNames: true`.
+
+If you prefer the legacy hex-hash form, set `collisionStrategy: "hash-suffix"`. If you want the build to fail instead, set `"error"`.
