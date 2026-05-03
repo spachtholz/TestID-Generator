@@ -4,9 +4,12 @@ import {
   findAttribute,
   getAllStaticAttributes,
   getBoundIdentifiers,
+  getChildShape,
+  getCssClasses,
   getEventHandlerNames,
   getInterpolationData,
   getStaticTextContent,
+  getStructuralDirectives,
   getTagName,
   resolveContextAnchors,
   type ContextAnchors,
@@ -26,87 +29,84 @@ export interface Fingerprint {
 }
 
 export type SemanticKey =
-  // --- Tier 0: own-element semantic attributes ---------------------------
+  | 'html_id'
   | 'formcontrolname'
   | 'name'
   | 'aria-label'
   | 'label'
   | 'placeholder'
   | 'routerlink'
-  // --- Tier 8: surrounding context --------------------------------------
   | 'context.label_for'
   | 'context.wrapper_label'
   | 'context.fieldset_legend'
   | 'context.preceding_heading'
   | 'context.wrapper_formcontrolname'
   | 'context.aria_labelledby_text'
-  // --- Tier 5: i18n / text bindings -------------------------------------
   | 'i18n_key'
   | 'text'
-  // --- Tier 4: event-handler names --------------------------------------
   | 'event.click'
   | 'event.change'
   | 'event.submit'
   | 'event.input'
   | 'event.any'
-  // --- Tier 1: tooltip / link / image meta ------------------------------
   | 'title'
   | 'href'
   | 'alt'
-  // --- Tier 3 / Tier 5b: bindings as semantic keys ----------------------
   | 'bound_identifier'
   | 'bound_text_path'
-  // --- Tier 1 cont: low-info fallbacks ---------------------------------
+  | 'structural_directive'
   | 'value'
-  | 'type';
+  | 'type'
+  | 'role'
+  | 'css_class'
+  | 'child_shape';
 
 /**
- * Priority order per FR-1.6 (extended). The first entry whose extractor
- * returns a non-empty value wins the `primaryKey` slot.
- *
- * Own-element semantic attributes win over surrounding context — when a
- * developer wrote `formControlName="customer"` on the element itself, that's
- * a stronger signal than the wrapping `<h2>Auftraggeber</h2>`.
+ * Priority order per FR-1.6. The first entry whose extractor returns a
+ * non-empty value wins the `primaryKey` slot. Own-element semantic
+ * attributes outrank surrounding context, which outranks generic
+ * fallbacks like raw text and CSS classes.
  */
 const PRIORITY: readonly SemanticKey[] = [
-  // Tier 0 — own-element
   'formcontrolname',
   'name',
   'aria-label',
   'label',
   'placeholder',
   'routerlink',
-  // Tier 8 — surrounding context (kicks in when own attributes are silent)
   'context.label_for',
   'context.wrapper_label',
   'context.fieldset_legend',
   'context.wrapper_formcontrolname',
   'context.preceding_heading',
   'context.aria_labelledby_text',
-  // Tier 5 — text bindings
   'i18n_key',
   'text',
-  // Tier 4 — event handler names (often the strongest signal on icon buttons)
   'event.click',
   'event.change',
   'event.submit',
   'event.input',
   'event.any',
-  // Tier 1 — tooltip / meta
   'title',
   'href',
   'alt',
-  // Tier 3 — bound identifier of a known input
   'bound_identifier',
-  // Tier 5b — bound text path
   'bound_text_path',
-  // Tier 1 — last-resort low-info attributes
+  'structural_directive',
   'value',
-  'type'
+  'type',
+  'role',
+  // `html_id` is page-unique by spec, so it's a guaranteed disambiguator —
+  // but `id` values are often cryptic slugs (`cust-dd`) less readable than
+  // a `<label>` text or aria-label. Placed near the bottom so a meaningful
+  // semantic field wins the readable `{key}` slot whenever one exists, but
+  // html_id still kills any remaining collision through the fingerprint.
+  'html_id',
+  'css_class',
+  'child_shape'
 ];
 
 export interface SemanticSnapshot {
-  // Tier 0
   formcontrolname: string | null;
   name: string | null;
   routerlink: string | null;
@@ -115,7 +115,6 @@ export interface SemanticSnapshot {
   text_content: string | null;
   type: string | null;
   role: string | null;
-  // Tier 1 (extended HTML attrs)
   title: string | null;
   alt: string | null;
   value: string | null;
@@ -124,17 +123,24 @@ export interface SemanticSnapshot {
   src: string | null;
   html_for: string | null;
   label: string | null;
-  // Tier 2 — catch-all for everything else statically present
+  /** Catch-all for any other static attribute (`severity`, `variant`, ...). */
   static_attributes: Record<string, string>;
-  // Tier 3 — bound input identifiers (`[data]="currentOrder"`)
+  /** Identifier paths read by bound inputs (`[data]="currentOrder"` → `currentOrder`). */
   bound_identifiers: Record<string, string>;
-  // Tier 4 — event handler function names
+  /** Function names invoked by event handlers (`(click)="saveOrder()"` → `saveOrder`). */
   event_handlers: Record<string, string>;
-  // Tier 5 — i18n + interpolation property paths
+  /** String literals fed into `translate`/`transloco`/`t`/`i18n` pipes. */
   i18n_keys: string[];
+  /** Property paths read via `{{ … }}` interpolations. */
   bound_text_paths: string[];
-  // Tier 8 — surrounding context anchors
+  /** Class tokens of the element, lowercased + sorted + deduplicated. */
+  css_classes: string[];
+  /** Anchors collected by walking up to the nearest section boundary. */
   context: ContextAnchors;
+  /** Structural directives lifted from the synthetic `<ng-template>` parent. */
+  structural_directives: Record<string, string>;
+  /** Tag names of immediate element-like children, in source order. */
+  child_shape: string[];
 }
 
 function normalise(value: string | null | undefined): string | null {
@@ -156,7 +162,10 @@ export function snapshotSemantics(
   const excludeAttr = options.attributeName ?? 'data-testid';
   const ctx = resolveContextAnchors(element, parents, rootNodes);
 
-  const tier0FieldSet: ReadonlySet<string> = new Set([
+  // Static attributes captured into named scalar fields below — anything
+  // that lands here as a key is excluded from the catch-all bucket so it
+  // isn't represented twice in the fingerprint.
+  const namedStaticFields: ReadonlySet<string> = new Set([
     'formcontrolname',
     'name',
     'routerlink',
@@ -164,7 +173,6 @@ export function snapshotSemantics(
     'placeholder',
     'type',
     'role',
-    // Tier 1 captured separately
     'title',
     'alt',
     'value',
@@ -173,17 +181,19 @@ export function snapshotSemantics(
     'src',
     'for',
     'label',
-    // own ID/labelled-by used by context resolver — we still record id but
-    // skip the data-testid hint and the `for` attribute outside of <label>
     'aria-labelledby'
   ]);
 
   const allStatic = getAllStaticAttributes(element, { excludeName: excludeAttr });
   const staticAttributes: Record<string, string> = {};
   for (const [k, v] of allStatic) {
-    if (tier0FieldSet.has(k)) continue;
-    if (k.startsWith('aria-')) continue; // aria-* is largely structural
+    if (namedStaticFields.has(k)) continue;
+    if (k.startsWith('aria-')) continue; // aria-* is structural, not identity
+    // class is captured as a sorted set of its own; style/tabindex are pure
+    // presentation, not identity.
     if (k === 'class' || k === 'style' || k === 'tabindex') continue;
+    // *ng* attributes get rewritten onto a synthetic Template parent and
+    // shouldn't reach this path — skip defensively.
     if (k.startsWith('*ng') || k.startsWith('*if') || k === 'ngfor' || k === 'ngif') continue;
     staticAttributes[k] = v;
   }
@@ -195,6 +205,11 @@ export function snapshotSemantics(
   for (const [k, v] of getEventHandlerNames(element)) eventHandlers[k] = v;
 
   const interp = getInterpolationData(element);
+  const cssClasses = getCssClasses(element);
+  const childShape = getChildShape(element);
+
+  const structuralDirectives: Record<string, string> = {};
+  for (const [k, v] of getStructuralDirectives(parents)) structuralDirectives[k] = v;
 
   return {
     formcontrolname: normalise(allStatic.get('formcontrolname')),
@@ -218,7 +233,10 @@ export function snapshotSemantics(
     event_handlers: eventHandlers,
     i18n_keys: interp.i18nKeys,
     bound_text_paths: interp.boundTextPaths,
-    context: ctx
+    css_classes: cssClasses,
+    context: ctx,
+    structural_directives: structuralDirectives,
+    child_shape: childShape
   };
 }
 
@@ -229,14 +247,28 @@ export interface SnapshotOptions {
   rootNodes?: readonly TmplAstNode[];
   /** Attribute name the tagger writes (excluded from static_attributes). */
   attributeName?: string;
+  /**
+   * When true, utility-shaped class names (Tailwind `mt-4`, `flex`, ...) are
+   * eligible to win the `css_class` primary-key slot. The fingerprint string
+   * always includes every class regardless — this flag only controls primary-
+   * key selection (which drives the readable `{key}` segment of the testid
+   * and the locator variable name).
+   */
+  includeUtilityClasses?: boolean;
 }
 
 /**
  * Pull the value the priority list considers for this key, given a fully
  * computed snapshot.
  */
-function valueForKey(snap: SemanticSnapshot, key: SemanticKey): string | null {
+function valueForKey(
+  snap: SemanticSnapshot,
+  key: SemanticKey,
+  options: { includeUtilityClasses?: boolean } = {}
+): string | null {
   switch (key) {
+    case 'html_id':
+      return snap.html_id;
     case 'formcontrolname':
       return snap.formcontrolname;
     case 'name':
@@ -295,11 +327,66 @@ function valueForKey(snap: SemanticSnapshot, key: SemanticKey): string | null {
     }
     case 'bound_text_path':
       return snap.bound_text_paths[0] ?? null;
+    case 'structural_directive': {
+      // Prefer the most semantically loaded directives first.
+      const ordered = ['ngif', 'ngifelse', 'ngfor', 'ngforof', 'ngswitchcase', 'ngswitchdefault'];
+      for (const k of ordered) {
+        const v = snap.structural_directives[k];
+        if (v && v !== '<expr>') return v;
+      }
+      // Anything else, alphabetically first non-marker value.
+      const keys = Object.keys(snap.structural_directives).sort();
+      for (const k of keys) {
+        const v = snap.structural_directives[k];
+        if (v && v !== '<expr>') return v;
+      }
+      return null;
+    }
     case 'value':
       return snap.value;
     case 'type':
       return snap.type;
+    case 'role':
+      return snap.role;
+    case 'css_class': {
+      // Prefer a non-utility class so `mt-4` doesn't rank ahead of
+      // `card-error` on Tailwind-heavy pages. If every class looks like a
+      // utility, fall back to the first one anyway. Opt-out via
+      // `includeUtilityClasses` for codebases that intentionally use Tailwind
+      // class names as identity markers.
+      if (options.includeUtilityClasses) {
+        return snap.css_classes[0] ?? null;
+      }
+      for (const c of snap.css_classes) {
+        if (!isLikelyUtilityClass(c)) return c;
+      }
+      return snap.css_classes[0] ?? null;
+    }
+    case 'child_shape': {
+      // Two structurally-identical wrappers around different content
+      // (button-vs-input, span-then-icon vs icon-then-span) get different
+      // child shapes. Joined with `-` so the resulting key reads naturally
+      // in the testid (`row--span-button`).
+      if (snap.child_shape.length === 0) return null;
+      return snap.child_shape.join('-');
+    }
   }
+}
+
+/**
+ * Heuristic for "this looks like a Tailwind / utility class, not a
+ * semantic one". Used only to demote utility classes when picking the
+ * `css_class` primary key — utility classes still go into the fingerprint
+ * string for full disambiguation.
+ */
+function isLikelyUtilityClass(cls: string): boolean {
+  if (/^(m|mx|my|mt|mb|ml|mr|p|px|py|pt|pb|pl|pr|w|h|min|max|gap|space|inset|top|left|right|bottom|z|order)-/.test(cls)) return true;
+  if (/^(text|bg|border|ring|shadow|font|leading|tracking|rounded|opacity|cursor|outline)-/.test(cls)) return true;
+  if (/^(flex|grid|block|inline|hidden|visible|absolute|relative|fixed|sticky|static)$/.test(cls)) return true;
+  if (/^(items|justify|content|self|place)-/.test(cls)) return true;
+  if (/^(sm|md|lg|xl|2xl):/.test(cls)) return true;
+  if (/^col-|^row-/.test(cls)) return true;
+  return false;
 }
 
 /**
@@ -309,17 +396,19 @@ function valueForKey(snap: SemanticSnapshot, key: SemanticKey): string | null {
  * doesn't change the fingerprint. Catch-all maps (`static_attributes`,
  * `bound_identifiers`, `event_handlers`) are sorted alphabetically by key.
  */
-function buildFingerprintString(tag: string, snap: SemanticSnapshot): string {
+function buildFingerprintString(
+  tag: string,
+  snap: SemanticSnapshot,
+  options: { includeUtilityClasses?: boolean } = {}
+): string {
   const parts: string[] = [tag];
 
-  // Priority-ordered scalar fields
+  // Priority-ordered scalar fields. `role` and `child_shape` are now part of
+  // the priority list, so no separate emit blocks are needed for them.
   for (const key of PRIORITY) {
-    const v = valueForKey(snap, key);
+    const v = valueForKey(snap, key, options);
     if (v !== null) parts.push(`${key}=${v}`);
   }
-
-  // role (outside the priority list, but a stable disambiguator)
-  if (snap.role) parts.push(`role=${snap.role}`);
 
   // i18n_keys/bound_text_paths beyond the first one (the first is already
   // captured via 'i18n_key' / 'bound_text_path')
@@ -359,6 +448,20 @@ function buildFingerprintString(tag: string, snap: SemanticSnapshot): string {
     parts.push(`on.${k}=${snap.event_handlers[k]}`);
   }
 
+  // CSS classes — sorted set, joined. Includes utility classes; for plain
+  // wrappers the class string is often the only available signal.
+  if (snap.css_classes.length > 0) {
+    parts.push(`class=${snap.css_classes.join(' ')}`);
+  }
+
+  // Structural directives carried by the parent <ng-template> wrapper.
+  // Sorted so two siblings with the same condition collide intentionally
+  // while differing conditions disambiguate.
+  const structKeys = Object.keys(snap.structural_directives).sort();
+  for (const k of structKeys) {
+    parts.push(`struct.${k}=${snap.structural_directives[k]}`);
+  }
+
   return parts.join('|');
 }
 
@@ -369,11 +472,12 @@ export function generateFingerprint(
 ): Fingerprint {
   const tag = getTagName(element).toLowerCase();
   const semantic = snapshotSemantics(element, options);
+  const valueOpts = { includeUtilityClasses: options.includeUtilityClasses };
 
   let primaryKey: SemanticKey | null = null;
   let primaryValue: string | null = null;
   for (const key of PRIORITY) {
-    const v = valueForKey(semantic, key);
+    const v = valueForKey(semantic, key, valueOpts);
     if (v !== null && v.length > 0) {
       primaryKey = key;
       primaryValue = v;
@@ -382,7 +486,7 @@ export function generateFingerprint(
   }
 
   return {
-    fingerprint: buildFingerprintString(tag, semantic),
+    fingerprint: buildFingerprintString(tag, semantic, valueOpts),
     primaryKey,
     primaryValue,
     semantic

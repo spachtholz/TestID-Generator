@@ -1,7 +1,7 @@
-// Component-path disambiguation in the tagger (Schicht 3 of the monorepo
-// problem). Two templates that share a basename — common in monorepos with
-// `apps/{name}/...` layouts — must not produce colliding testids in the
-// registry, otherwise the second app's entry silently overwrites the first.
+// Component-path disambiguation in the tagger. Two templates that share a
+// basename — common in monorepos with `apps/{name}/...` layouts — must not
+// produce colliding testids in the registry, otherwise the second app's
+// entry silently overwrites the first.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';

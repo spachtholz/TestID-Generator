@@ -1,10 +1,11 @@
 {
-  "_comment": "Skip purely-decorative PrimeNG wrappers (panels, cards, toolbars) so the registry stays focused on interactive elements. The child elements inside these wrappers are still tagged normally - only the wrapper itself is ignored.",
+  "_comment": "Skip purely-decorative PrimeNG wrappers (panels, cards, toolbars) so the registry stays focused on interactive elements. The child elements inside these wrappers are still tagged normally - only the wrapper itself is ignored. Pair with componentNaming='disambiguate' if you have a monorepo with shared template basenames.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],
     "registryDir": "test-artifacts/testids",
     "testConfigurationOnly": false,
+    "componentNaming": "disambiguate",
     "ignoreTags": [
       "p-panel",
       "p-fieldset",

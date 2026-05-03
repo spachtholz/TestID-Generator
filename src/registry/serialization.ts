@@ -7,7 +7,6 @@ import type { Registry, RegistryEntry, SemanticAttributes } from './schema.js';
 export type RegistryProfile = 'minimal' | 'standard' | 'full';
 
 export type SemanticFieldName =
-  // Tier 0
   | 'formcontrolname'
   | 'name'
   | 'routerlink'
@@ -16,7 +15,6 @@ export type SemanticFieldName =
   | 'text_content'
   | 'type'
   | 'role'
-  // Tier 1
   | 'title'
   | 'alt'
   | 'value'
@@ -25,17 +23,15 @@ export type SemanticFieldName =
   | 'src'
   | 'html_for'
   | 'label'
-  // Tier 2
   | 'static_attributes'
-  // Tier 3
   | 'bound_identifiers'
-  // Tier 4
   | 'event_handlers'
-  // Tier 5
   | 'i18n_keys'
   | 'bound_text_paths'
-  // Tier 8
-  | 'context';
+  | 'css_classes'
+  | 'child_shape'
+  | 'context'
+  | 'structural_directives';
 
 export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'formcontrolname',
@@ -59,7 +55,10 @@ export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'event_handlers',
   'i18n_keys',
   'bound_text_paths',
-  'context'
+  'css_classes',
+  'child_shape',
+  'context',
+  'structural_directives'
 ];
 
 /** Matches the Zod schema in tagger/config-loader.ts. */
@@ -94,20 +93,19 @@ const PROFILE_DEFAULTS: Record<RegistryProfile, ResolvedRegistryOptions> = {
     includeHistory: false,
     includeDynamicChildren: true,
     semanticFields: [
-      // Tier 0
       'formcontrolname',
       'aria_label',
       'placeholder',
       'text_content',
-      // Tier 1
       'title',
       'label',
-      // Tier 4 (event handlers are highly informative)
+      'html_id',
       'event_handlers',
-      // Tier 5 (i18n is the most stable text-content anchor)
       'i18n_keys',
-      // Tier 8 (context is essential for reusable components)
-      'context'
+      'css_classes',
+      'child_shape',
+      'context',
+      'structural_directives'
     ]
   },
   full: {
@@ -172,6 +170,12 @@ function filterEntry(
   // a `minimal` write would silently unfreeze the locator names on next run.
   if (entry.locator_name !== undefined) {
     out.locator_name = entry.locator_name;
+  }
+  // disambiguator is collision-resolution state. Preserving it across writes
+  // lets the next tagger run reuse the same suffix-N for the same logical
+  // element, keeping testids stable when siblings are added/removed.
+  if (entry.disambiguator !== undefined) {
+    out.disambiguator = entry.disambiguator;
   }
   if (options.includeHistory) {
     if (entry.last_generated_at !== undefined) out.last_generated_at = entry.last_generated_at;

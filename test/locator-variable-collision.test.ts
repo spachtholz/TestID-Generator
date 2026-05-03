@@ -1,6 +1,7 @@
 // Locator-generator must not silently emit two lines that share the same
-// Python variable name — Robot would only see the last one. Tier-D fix:
-// detect collisions during module build and append a stable `_2/_3` suffix.
+// Python variable name — Robot would only see the last one. Collisions
+// are detected during module build and a stable `_2`/`_3` suffix is
+// appended in deterministic testid order.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
@@ -84,6 +85,71 @@ describe('locator variable-name collision handling', () => {
     expect(content).toContain("order_nativeButton_save = \"xpath://*[@data-testid='order__button--save']\"");
     expect(content).toContain("order_nativeButton_save_2 = \"xpath://*[@data-testid='order__button--save--2']\"");
     expect(content).toContain("order_nativeButton_save_3 = \"xpath://*[@data-testid='order__button--save--3']\"");
+  });
+
+  it('uses surrounding-context as the readable {key} instead of falling back to text_content', async () => {
+    // Two buttons with text "Speichern" but distinct surrounding context
+    // (different fieldset legends). text_content is identical; the
+    // surrounding-context fields distinguish them. The locator-gen
+    // primary-key picker walks the same priority list as the tagger and
+    // picks the legend, producing readable variables instead of `_2`/`_3`.
+    const registry: Registry = {
+      ...createEmptyRegistry(1, '2026-04-17T10:00:00Z'),
+      entries: {
+        'order__button--auftraggeber-3a3a3a': {
+          component: 'src/order.component.html',
+          tag: 'button',
+          element_type: 'native_button',
+          fingerprint: 'button|context.fieldset_legend=Auftraggeber|text=Speichern',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Speichern',
+            type: null,
+            context: {
+              label_for: null,
+              wrapper_label: null,
+              fieldset_legend: 'Auftraggeber',
+              preceding_heading: null,
+              wrapper_formcontrolname: null,
+              aria_labelledby_text: null
+            }
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        },
+        'order__button--bestellung-7b7b7b': {
+          component: 'src/order.component.html',
+          tag: 'button',
+          element_type: 'native_button',
+          fingerprint: 'button|context.fieldset_legend=Bestellung|text=Speichern',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Speichern',
+            type: null,
+            context: {
+              label_for: null,
+              wrapper_label: null,
+              fieldset_legend: 'Bestellung',
+              preceding_heading: null,
+              wrapper_formcontrolname: null,
+              aria_labelledby_text: null
+            }
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        }
+      }
+    };
+    await generateLocators(registry, { outDir: dir });
+    const content = await fs.readFile(path.join(dir, 'order.py'), 'utf8');
+    // Both variables must be readable, distinct, and NOT use `_2`/`_3`.
+    expect(content).toMatch(/^order_nativeButton_auftraggeber\s*=/m);
+    expect(content).toMatch(/^order_nativeButton_bestellung\s*=/m);
+    expect(content).not.toMatch(/_2\b/);
   });
 
   it('does nothing when the variableFormat is already unique', async () => {

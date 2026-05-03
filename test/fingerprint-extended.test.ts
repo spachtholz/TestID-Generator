@@ -1,7 +1,7 @@
-// Coverage for the Tier 1-5 + surrounding-context fingerprint extensions.
-// These cases all FAILED to produce unique fingerprints with the legacy
-// 8-field snapshot — they exist to lock in the new behavior and to make
-// regressions visible.
+// Coverage for the extended fingerprint extractors: static attributes,
+// bound-input identifiers, event-handler names, i18n keys, interpolation
+// property paths, CSS classes, structural directives, and surrounding-
+// context anchors.
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -39,7 +39,7 @@ function fpFor(hit: ElementHit, rootNodes: readonly unknown[]) {
   });
 }
 
-describe('Tier 1: extended static attributes', () => {
+describe('extended static attributes', () => {
   it('uses `title` to disambiguate two icon buttons', () => {
     const { hits, rootNodes } = findAll(
       `<button title="Bestellung speichern" icon="save"></button>
@@ -68,7 +68,7 @@ describe('Tier 1: extended static attributes', () => {
     });
   });
 
-  it('promotes `value` and `title` to scalar Tier-1 fields', () => {
+  it('promotes `value` and `title` to dedicated scalar fields', () => {
     const { hits, rootNodes } = findAll(
       `<p-tag value="active" title="Active record">A</p-tag>`,
       'p-tag'
@@ -82,7 +82,7 @@ describe('Tier 1: extended static attributes', () => {
   });
 });
 
-describe('Tier 3: bound-input identifiers', () => {
+describe('bound-input identifiers', () => {
   it('disambiguates `<my-card [data]="currentOrder">` vs `[data]="archivedOrder"`', () => {
     const { hits, rootNodes } = findAll(
       `<my-card [data]="currentOrder"></my-card>
@@ -114,7 +114,7 @@ describe('Tier 3: bound-input identifiers', () => {
   });
 });
 
-describe('Tier 4: event handler function names', () => {
+describe('event handler function names', () => {
   it('uses `(click)="saveOrder()"` as the primary key', () => {
     const { hits, rootNodes } = findAll(
       `<my-icon-button (click)="saveOrder()"></my-icon-button>
@@ -138,7 +138,7 @@ describe('Tier 4: event handler function names', () => {
   });
 });
 
-describe('Tier 5: i18n keys + bound-text paths', () => {
+describe('i18n keys + bound-text paths', () => {
   it('extracts `{{ "key" | translate }}` as i18n key', () => {
     const { hits, rootNodes } = findAll(
       `<button>{{ 'order.save' | translate }}</button>
@@ -177,6 +177,106 @@ describe('Tier 5: i18n keys + bound-text paths', () => {
     );
     const a = fpFor(hits[0]!, rootNodes);
     expect(a.primaryValue).toBe('order.total');
+  });
+});
+
+describe('CSS classes as last-resort distinguisher', () => {
+  it('disambiguates two bare divs with different classes', () => {
+    const { hits, rootNodes } = findAll(
+      `<div class="form-row"></div>
+       <div class="form-header"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    const b = fpFor(hits[1]!, rootNodes);
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+    expect(a.semantic.css_classes).toEqual(['form-row']);
+    expect(b.semantic.css_classes).toEqual(['form-header']);
+  });
+
+  it('sorts and dedupes class tokens', () => {
+    const { hits, rootNodes } = findAll(
+      `<div class="zebra alpha alpha bravo"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.semantic.css_classes).toEqual(['alpha', 'bravo', 'zebra']);
+  });
+
+  it('prefers a non-utility class as the primary key', () => {
+    const { hits, rootNodes } = findAll(
+      `<div class="mt-4 flex card-header text-sm"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.primaryKey).toBe('css_class');
+    expect(a.primaryValue).toBe('card-header');
+  });
+
+  it('still uses class as fallback when only utilities are present', () => {
+    const { hits, rootNodes } = findAll(
+      `<div class="mt-4 p-2 flex"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.primaryKey).toBe('css_class');
+    // alphabetically first of the utility classes
+    expect(a.primaryValue).toBe('flex');
+  });
+
+  it('semantic attributes still beat classes', () => {
+    const { hits, rootNodes } = findAll(
+      `<input formcontrolname="email" class="error" />`,
+      'input'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.primaryKey).toBe('formcontrolname');
+    expect(a.primaryValue).toBe('email');
+  });
+});
+
+describe('structural directives on parent <ng-template>', () => {
+  it('disambiguates `<div *ngIf="A">` and `<div *ngIf="B">`', () => {
+    const { hits, rootNodes } = findAll(
+      `<div *ngIf="isAdmin"></div>
+       <div *ngIf="isUser"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    const b = fpFor(hits[1]!, rootNodes);
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+    expect(a.semantic.structural_directives).toEqual({ ngif: 'isAdmin' });
+    expect(b.semantic.structural_directives).toEqual({ ngif: 'isUser' });
+  });
+
+  it('uses the *ngIf condition as primary key when nothing better is around', () => {
+    const { hits, rootNodes } = findAll(
+      `<div *ngIf="isAdmin"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.primaryKey).toBe('structural_directive');
+    expect(a.primaryValue).toBe('isAdmin');
+  });
+
+  it('captures *ngFor expression', () => {
+    const { hits, rootNodes } = findAll(
+      `<div *ngFor="let order of orders"></div>`,
+      'div'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    // Angular splits *ngFor into a marker `ngFor` (empty) plus the actual
+    // collection binding `ngForOf` — we capture the latter.
+    expect(a.semantic.structural_directives.ngforof).toBe('orders');
+  });
+
+  it('semantic attributes still beat structural directives', () => {
+    const { hits, rootNodes } = findAll(
+      `<input *ngIf="show" formcontrolname="email" />`,
+      'input'
+    );
+    const a = fpFor(hits[0]!, rootNodes);
+    expect(a.primaryKey).toBe('formcontrolname');
   });
 });
 

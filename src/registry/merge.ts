@@ -150,6 +150,12 @@ function continueCarryOver(
   if (carried.locator_name !== undefined) {
     merged.locator_name = carried.locator_name;
   }
+  // Preserve the disambiguator the previous run assigned, unless the new run
+  // recomputed one (which it does whenever a collision actually had to be
+  // resolved this round).
+  if (incoming.disambiguator === undefined && carried.disambiguator !== undefined) {
+    merged.disambiguator = carried.disambiguator;
+  }
   return merged;
 }
 

@@ -61,6 +61,15 @@ export const registryJsonSchema = {
         },
         source: { type: 'string', enum: ['generated', 'manual'] },
         locator_name: { type: 'string', minLength: 1 },
+        disambiguator: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'value'],
+          properties: {
+            kind: { type: 'string', enum: ['sibling-index', 'hash'] },
+            value: { type: 'string', minLength: 1 }
+          }
+        },
         first_seen_version: { type: 'integer', minimum: 1 },
         last_seen_version: { type: 'integer', minimum: 1 },
         last_generated_at: { type: 'string', format: 'date-time' },
@@ -73,12 +82,11 @@ export const registryJsonSchema = {
     },
     semantic: {
       type: 'object',
-      // Tier 1-5 fields are optional and may be absent in old registries; we
-      // accept additional unknown keys so the registry can be loaded across
-      // mismatched tooling versions without validation failures.
+      // Newer fields are optional and may be absent in older registry files;
+      // additional unknown keys are tolerated so registries written by
+      // mismatched tooling versions still validate.
       additionalProperties: true,
       properties: {
-        // Tier 0
         formcontrolname: { type: ['string', 'null'] },
         name: { type: ['string', 'null'] },
         routerlink: { type: ['string', 'null'] },
@@ -87,7 +95,6 @@ export const registryJsonSchema = {
         text_content: { type: ['string', 'null'] },
         type: { type: ['string', 'null'] },
         role: { type: ['string', 'null'] },
-        // Tier 1
         title: { type: ['string', 'null'] },
         alt: { type: ['string', 'null'] },
         value: { type: ['string', 'null'] },
@@ -96,28 +103,24 @@ export const registryJsonSchema = {
         src: { type: ['string', 'null'] },
         html_for: { type: ['string', 'null'] },
         label: { type: ['string', 'null'] },
-        // Tier 2
         static_attributes: {
           oneOf: [
             { type: 'null' },
             { type: 'object', additionalProperties: { type: 'string' } }
           ]
         },
-        // Tier 3
         bound_identifiers: {
           oneOf: [
             { type: 'null' },
             { type: 'object', additionalProperties: { type: 'string' } }
           ]
         },
-        // Tier 4
         event_handlers: {
           oneOf: [
             { type: 'null' },
             { type: 'object', additionalProperties: { type: 'string' } }
           ]
         },
-        // Tier 5
         i18n_keys: {
           oneOf: [
             { type: 'null' },
@@ -130,7 +133,24 @@ export const registryJsonSchema = {
             { type: 'array', items: { type: 'string' } }
           ]
         },
-        // Tier 8: surrounding context
+        css_classes: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        child_shape: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        structural_directives: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: { type: 'string' } }
+          ]
+        },
         context: {
           oneOf: [
             { type: 'null' },

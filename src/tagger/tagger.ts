@@ -47,6 +47,7 @@ import {
   componentNameFromPath,
   generateId
 } from './id-generator.js';
+import { formatHasPlaceholder } from '../util/id-template.js';
 
 export interface TaggerRunOptions {
   cwd?: string;
@@ -433,6 +434,10 @@ interface TagCandidate {
   insertionOffset: number;
   source: 'generated' | 'manual';
   loop: LoopContext | null;
+  /** Source position used to sort sibling-index assignments deterministically. */
+  sortKey: number;
+  /** Filled in by collision resolution; persisted onto the registry entry. */
+  disambiguator: { kind: 'sibling-index' | 'hash'; value: string } | null;
 }
 
 /**
@@ -465,11 +470,15 @@ export function tagTemplateSource(
     const fingerprint = generateFingerprint(el, {
       parents,
       rootNodes: parsed.ast,
-      attributeName: config.attributeName
+      attributeName: config.attributeName,
+      includeUtilityClasses: config.includeUtilityClasses
     });
 
     const insertionOffset = computeInsertionOffset(source, el);
     if (insertionOffset < 0) return;
+
+    const span = el.startSourceSpan;
+    const sortKey = span?.start.offset ?? insertionOffset;
 
     candidates.push({
       id: '', // assigned below
@@ -480,91 +489,22 @@ export function tagTemplateSource(
       existingId: existing?.value ?? null,
       insertionOffset,
       source: 'generated', // tentative; finalized once we compare to the auto-generated id
-      loop
+      loop,
+      sortKey,
+      disambiguator: null
     });
   });
 
-  // Assign IDs, handling collisions by switching to hash-suffixed form (FR-1.7).
-  const usedIds = new Set<string>();
-  // Pre-reserve existing IDs so new ones never collide with them.
-  for (const c of candidates) {
-    if (c.alreadyTagged && c.existingId) {
-      usedIds.add(c.existingId);
-    }
-  }
-
-  let collisions = 0;
+  // Assign IDs, handling collisions per the configured strategy (FR-1.7).
   const collisionWarnings: CollisionWarning[] = [];
-  for (const c of candidates) {
-    // Always compute what the tagger *would* assign, so we can tell a
-    // tagger-authored id (that was simply carried over from a previous run) apart
-    // from a human-authored override of the tagger's suggestion.
-    const wouldGenerate = generateId({
-      componentName: options.componentName,
-      elementType: c.detected.shortType,
-      primaryValue: c.fingerprint.primaryValue,
-      tag: c.detected.tag,
-      fingerprint: c.fingerprint.fingerprint,
-      needsHashSuffix: config.alwaysHash || !c.fingerprint.primaryValue,
-      hashLength: options.hashLength,
-      hashAlgorithm: config.hashAlgorithm,
-      idFormat: config.idFormat
-    });
-
-    if (c.alreadyTagged && c.existingId) {
-      c.id = c.existingId;
-      c.source = c.existingId === wouldGenerate ? 'generated' : 'manual';
-      continue;
-    }
-
-    let id = wouldGenerate;
-    if (usedIds.has(id)) {
-      collisions += 1;
-      if (config.collisionStrategy === 'error') {
-        throw new Error(
-          `[tagger] collision on id '${id}' in ${options.componentPath} - ` +
-            `two elements produce the same fingerprint and collisionStrategy='error' ` +
-            `is set. Add an aria-label or formcontrolname to differentiate, or switch ` +
-            `to collisionStrategy='hash-suffix'.`
-        );
-      }
-      // Try hash-based disambiguation only if the format actually has a slot
-      // to render the hash into.
-      const formatHasHashSlot = /\{hash(:-)?\}/.test(config.idFormat);
-      if (formatHasHashSlot) {
-        id = generateId({
-          componentName: options.componentName,
-          elementType: c.detected.shortType,
-          primaryValue: c.fingerprint.primaryValue,
-          tag: c.detected.tag,
-          fingerprint: c.fingerprint.fingerprint,
-          needsHashSuffix: true,
-          hashLength: options.hashLength,
-          hashAlgorithm: config.hashAlgorithm,
-          idFormat: config.idFormat
-        });
-      }
-      // If we still collide, either the format has no hash slot, or the
-      // elements share a byte-identical fingerprint (same hash). Both cases
-      // are unresolvable - emit a warning, let duplicates share the id.
-      if (usedIds.has(id)) {
-        const span = c.element.startSourceSpan;
-        collisionWarnings.push({
-          componentPath: options.componentPath.replace(/\\/g, '/'),
-          line: span?.start.line != null ? span.start.line + 1 : 0,
-          column: span?.start.col != null ? span.start.col + 1 : 0,
-          id,
-          tag: c.detected.tag,
-          reason: formatHasHashSlot ? 'identical-fingerprint' : 'no-hash-placeholder',
-          fingerprint: c.fingerprint.fingerprint,
-          semantic: c.fingerprint.semantic as unknown as Record<string, unknown>
-        });
-      }
-    }
-    c.id = id;
-    c.source = 'generated';
-    usedIds.add(id);
-  }
+  const collisions = assignCandidateIds({
+    candidates,
+    config,
+    componentName: options.componentName,
+    componentPath: options.componentPath,
+    hashLength: options.hashLength,
+    collisionWarnings
+  });
 
   // Build registry entries (sorted later by the writer). FR-1.3: keep existing IDs.
   const entries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>> = {};
@@ -584,6 +524,9 @@ export function tagTemplateSource(
         pattern: dynSpec.pattern(c.id),
         addressing: [...dynSpec.addressing]
       };
+    }
+    if (c.disambiguator) {
+      entry.disambiguator = c.disambiguator;
     }
     entries[c.id] = entry;
   }
@@ -783,7 +726,8 @@ function buildSemanticForRegistry(
     type: snap.type,
     role: snap.role
   };
-  // Tier 1 — emit only when present
+  // Optional named scalar fields — only emit when present so the JSON
+  // stays compact for the common case.
   if (snap.title !== null) out.title = snap.title;
   if (snap.alt !== null) out.alt = snap.alt;
   if (snap.value !== null) out.value = snap.value;
@@ -792,7 +736,7 @@ function buildSemanticForRegistry(
   if (snap.src !== null) out.src = snap.src;
   if (snap.html_for !== null) out.html_for = snap.html_for;
   if (snap.label !== null) out.label = snap.label;
-  // Tier 2/3/4 — drop empties to keep the JSON tight
+  // Catch-all maps and lists — drop empties.
   if (Object.keys(snap.static_attributes).length > 0) {
     out.static_attributes = { ...snap.static_attributes };
   }
@@ -802,10 +746,14 @@ function buildSemanticForRegistry(
   if (Object.keys(snap.event_handlers).length > 0) {
     out.event_handlers = { ...snap.event_handlers };
   }
-  // Tier 5
   if (snap.i18n_keys.length > 0) out.i18n_keys = [...snap.i18n_keys];
   if (snap.bound_text_paths.length > 0) out.bound_text_paths = [...snap.bound_text_paths];
-  // Tier 8 — emit only when at least one anchor was found
+  if (snap.css_classes.length > 0) out.css_classes = [...snap.css_classes];
+  if (snap.child_shape.length > 0) out.child_shape = [...snap.child_shape];
+  if (Object.keys(snap.structural_directives).length > 0) {
+    out.structural_directives = { ...snap.structural_directives };
+  }
+  // Surrounding context — emit only when at least one anchor was found.
   if (
     snap.context.label_for !== null ||
     snap.context.wrapper_label !== null ||
@@ -815,6 +763,282 @@ function buildSemanticForRegistry(
     snap.context.aria_labelledby_text !== null
   ) {
     out.context = { ...snap.context };
+  }
+  return out;
+}
+
+/**
+ * Resolve every candidate's final id, applying the configured collision
+ * strategy. Mutates each candidate's `id`, `source` and `disambiguator`
+ * in place; returns the count of collisions seen for the run-level metric.
+ *
+ * Strategies:
+ * - 'error'         — throw on first collision.
+ * - 'hash-suffix'   — re-render with `{hash}` filled in.
+ * - 'sibling-index' — sort the colliding group by source position, assign
+ *                     `--1`, `--2`, … via the `{disambiguator}` slot.
+ * - 'auto'          — try sibling-index first (readable), fall back to hash
+ *                     if the format has no disambiguator slot, and finally
+ *                     warn if nothing helped.
+ */
+function assignCandidateIds(args: {
+  candidates: TagCandidate[];
+  config: TaggerConfig;
+  componentName: string;
+  componentPath: string;
+  hashLength: number;
+  collisionWarnings: CollisionWarning[];
+}): number {
+  const { candidates, config, componentName, componentPath, hashLength, collisionWarnings } = args;
+
+  // Pre-compute the bare ("would-generate") id for every candidate so we know
+  // who collides with whom up front. This lets sibling-index assign suffixes
+  // by *group*, not greedily one-by-one.
+  const wouldGenerate: string[] = candidates.map((c) =>
+    generateId({
+      componentName,
+      elementType: c.detected.shortType,
+      primaryValue: c.fingerprint.primaryValue,
+      tag: c.detected.tag,
+      fingerprint: c.fingerprint.fingerprint,
+      needsHashSuffix: config.alwaysHash || !c.fingerprint.primaryValue,
+      hashLength,
+      hashAlgorithm: config.hashAlgorithm,
+      idFormat: config.idFormat
+    })
+  );
+
+  // Group all candidates (tagged + untagged alike) by their bare id so the
+  // collision resolver assigns `--N` slots based on the full group, then can
+  // tell whether each existing testid matches what the tagger *would* have
+  // computed. That lets carried-over disambiguated ids stay 'generated'
+  // instead of being misclassified as manual on every re-run.
+  const byBareId = new Map<string, number[]>();
+  for (let i = 0; i < candidates.length; i++) {
+    const bare = wouldGenerate[i]!;
+    const list = byBareId.get(bare) ?? [];
+    list.push(i);
+    byBareId.set(bare, list);
+  }
+
+  let collisions = 0;
+  const formatHasHashSlot = formatHasPlaceholder(config.idFormat, 'hash')
+    || formatHasPlaceholder(config.idFormat, 'hash:-');
+  const formatHasDisambiguatorSlot = formatHasPlaceholder(config.idFormat, 'disambiguator')
+    || formatHasPlaceholder(config.idFormat, 'disambiguator:--');
+
+  const usedIds = new Set<string>();
+
+  // Process groups in deterministic order (alphabetical bare id) so
+  // re-runs without source edits produce the same assignment.
+  const groupKeys = [...byBareId.keys()].sort();
+  for (const bare of groupKeys) {
+    const indices = byBareId.get(bare)!;
+
+    // Sort the group deterministically by source position so suffix
+    // assignment is stable across re-runs (same source → same suffix).
+    indices.sort((a, b) => candidates[a]!.sortKey - candidates[b]!.sortKey);
+
+    if (indices.length === 1) {
+      // Singleton group — assign the bare id directly. No disambiguator
+      // needed; the existing-id check below tells generated vs. manual.
+      const i = indices[0]!;
+      const c = candidates[i]!;
+      const wouldAssign = bare;
+      finalizeCandidate(c, wouldAssign, null, usedIds);
+      continue;
+    }
+
+    // n > 1 → real collision. Apply the configured strategy.
+    if (config.collisionStrategy === 'error') {
+      const c = candidates[indices[0]!]!;
+      throw new Error(
+        `[tagger] collision on id '${bare}' in ${componentPath} - ` +
+          `${indices.length} elements produce the same fingerprint and ` +
+          `collisionStrategy='error' is set. Add an aria-label or formcontrolname ` +
+          `to differentiate, or switch to collisionStrategy='auto' (default), ` +
+          `'sibling-index' or 'hash-suffix'. (first offender: <${c.detected.tag}>)`
+      );
+    }
+
+    collisions += indices.length;
+
+    // Compute the would-be assignment for the entire group up front. Each
+    // strategy returns either an array of (id, disambiguator) pairs or null
+    // if it can't resolve.
+    let assignment: Array<{ id: string; disambiguator: { kind: 'sibling-index' | 'hash'; value: string } }> | null = null;
+
+    if (config.collisionStrategy === 'sibling-index' || config.collisionStrategy === 'auto') {
+      assignment = computeSiblingIndexAssignment({
+        indices,
+        candidates,
+        bareIds: wouldGenerate,
+        config,
+        componentName,
+        hashLength,
+        formatHasDisambiguatorSlot
+      });
+    }
+
+    if (assignment === null && (config.collisionStrategy === 'hash-suffix' || config.collisionStrategy === 'auto')) {
+      assignment = computeHashSuffixAssignment({
+        indices,
+        candidates,
+        config,
+        componentName,
+        hashLength,
+        formatHasHashSlot
+      });
+    }
+
+    if (assignment !== null) {
+      // Detect duplicates within the proposed assignment (e.g. hash-suffix
+      // on byte-identical fingerprints) — fall through to the warning path.
+      const seen = new Set<string>();
+      let allUnique = true;
+      for (const a of assignment) {
+        if (seen.has(a.id)) { allUnique = false; break; }
+        seen.add(a.id);
+      }
+      if (allUnique) {
+        for (let n = 0; n < indices.length; n++) {
+          const c = candidates[indices[n]!]!;
+          finalizeCandidate(c, assignment[n]!.id, assignment[n]!.disambiguator, usedIds);
+        }
+        continue;
+      }
+    }
+
+    // Truly unresolvable — fall back to letting them share the bare id
+    // and emit a warning so the user can extend the fingerprint.
+    for (const i of indices) {
+      const c = candidates[i]!;
+      finalizeCandidate(c, bare, null, usedIds);
+      const span = c.element.startSourceSpan;
+      collisionWarnings.push({
+        componentPath: componentPath.replace(/\\/g, '/'),
+        line: span?.start.line != null ? span.start.line + 1 : 0,
+        column: span?.start.col != null ? span.start.col + 1 : 0,
+        id: bare,
+        tag: c.detected.tag,
+        reason: !formatHasHashSlot && !formatHasDisambiguatorSlot
+          ? 'no-hash-placeholder'
+          : 'identical-fingerprint',
+        fingerprint: c.fingerprint.fingerprint,
+        semantic: c.fingerprint.semantic as unknown as Record<string, unknown>
+      });
+    }
+  }
+
+  return collisions;
+}
+
+/**
+ * Settle a single candidate's id + source + disambiguator. When the element
+ * already carries a testid, distinguish manual overrides (existing != what
+ * the tagger would compute, including any disambiguator) from carried-over
+ * tagger-authored ids.
+ */
+function finalizeCandidate(
+  c: TagCandidate,
+  wouldAssign: string,
+  disambiguator: { kind: 'sibling-index' | 'hash'; value: string } | null,
+  usedIds: Set<string>
+): void {
+  if (c.alreadyTagged && c.existingId) {
+    if (c.existingId === wouldAssign) {
+      c.id = c.existingId;
+      c.source = 'generated';
+      c.disambiguator = disambiguator;
+    } else {
+      c.id = c.existingId;
+      c.source = 'manual';
+      c.disambiguator = null;
+    }
+  } else {
+    c.id = wouldAssign;
+    c.source = 'generated';
+    c.disambiguator = disambiguator;
+  }
+  usedIds.add(c.id);
+}
+
+interface ComputeArgs {
+  indices: number[];
+  candidates: TagCandidate[];
+  config: TaggerConfig;
+  componentName: string;
+  hashLength: number;
+}
+
+interface AssignmentEntry {
+  id: string;
+  disambiguator: { kind: 'sibling-index' | 'hash'; value: string };
+}
+
+/**
+ * Compute `--1`, `--2`, … assignments for a colliding group via the
+ * `{disambiguator}` slot in `idFormat`. When the format has no disambiguator
+ * slot, append `--N` to the bare id directly. Returns null only when the
+ * group is empty (real impossibility); always otherwise returns N entries.
+ */
+function computeSiblingIndexAssignment(
+  args: ComputeArgs & { bareIds: readonly string[]; formatHasDisambiguatorSlot: boolean }
+): AssignmentEntry[] | null {
+  const { indices, candidates, bareIds, config, componentName, hashLength, formatHasDisambiguatorSlot } = args;
+  if (indices.length === 0) return null;
+
+  const out: AssignmentEntry[] = [];
+  for (let n = 0; n < indices.length; n++) {
+    const c = candidates[indices[n]!]!;
+    const value = String(n + 1);
+    const id = formatHasDisambiguatorSlot
+      ? generateId({
+          componentName,
+          elementType: c.detected.shortType,
+          primaryValue: c.fingerprint.primaryValue,
+          tag: c.detected.tag,
+          fingerprint: c.fingerprint.fingerprint,
+          needsHashSuffix: config.alwaysHash || !c.fingerprint.primaryValue,
+          hashLength,
+          hashAlgorithm: config.hashAlgorithm,
+          idFormat: config.idFormat,
+          disambiguator: value
+        })
+      : `${bareIds[indices[n]!]!}--${value}`;
+    out.push({ id, disambiguator: { kind: 'sibling-index', value } });
+  }
+  return out;
+}
+
+/**
+ * Compute hash-suffixed assignments for a colliding group. Returns null when
+ * the format has no `{hash}` slot — caller should fall back to another
+ * strategy or the warning path. The returned ids may still contain duplicates
+ * if the group's fingerprints are byte-identical; the caller checks for that.
+ */
+function computeHashSuffixAssignment(
+  args: ComputeArgs & { formatHasHashSlot: boolean }
+): AssignmentEntry[] | null {
+  const { indices, candidates, config, componentName, hashLength, formatHasHashSlot } = args;
+  if (!formatHasHashSlot) return null;
+
+  const out: AssignmentEntry[] = [];
+  for (const i of indices) {
+    const c = candidates[i]!;
+    const id = generateId({
+      componentName,
+      elementType: c.detected.shortType,
+      primaryValue: c.fingerprint.primaryValue,
+      tag: c.detected.tag,
+      fingerprint: c.fingerprint.fingerprint,
+      needsHashSuffix: true,
+      hashLength,
+      hashAlgorithm: config.hashAlgorithm,
+      idFormat: config.idFormat
+    });
+    const hash = id.match(/[a-f0-9]{4,16}$/)?.[0] ?? id;
+    out.push({ id, disambiguator: { kind: 'hash', value: hash } });
   }
   return out;
 }

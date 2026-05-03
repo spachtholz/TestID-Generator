@@ -338,7 +338,110 @@ export function getTagName(element: VisitedElement): string {
 }
 
 /* ---------------------------------------------------------------------- *
- * Tier 1+2: static attribute snapshots
+ * Immediate child-element shape
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Tag names of the element's direct element-like children, in source order.
+ * Two structurally identical wrappers around different content (e.g. one
+ * containing `<button>` and one containing `<input>`) get different shape
+ * lists and stop colliding on the fingerprint.
+ *
+ * Order is preserved (not sorted): an icon-then-label row is structurally
+ * different from a label-then-icon row even when both children are the same
+ * tags.
+ */
+export function getChildShape(element: VisitedElement): string[] {
+  const out: string[] = [];
+  for (const child of element.children ?? []) {
+    if (isElementLike(child)) {
+      out.push(getTagName(child).toLowerCase());
+    }
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------- *
+ * CSS classes
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Class tokens of the element. Lowercased, deduplicated, alphabetically
+ * sorted so re-ordering classes in source doesn't change the fingerprint.
+ *
+ * All classes are included — utility classes (Tailwind `mt-4`, `flex`) are
+ * noisy, but on real-world Angular templates the class string is often the
+ * only thing distinguishing two structurally identical wrapper elements.
+ */
+export function getCssClasses(element: VisitedElement): string[] {
+  const raw = findAttribute(element, 'class')?.value;
+  if (!raw) return [];
+  const seen = new Set<string>();
+  for (const tok of raw.split(/\s+/)) {
+    if (tok.length > 0) seen.add(tok.toLowerCase());
+  }
+  return [...seen].sort();
+}
+
+/* ---------------------------------------------------------------------- *
+ * Structural directives carried on a synthetic <ng-template>
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Angular rewrites `*ngIf="cond"` into `<ng-template [ngIf]="cond">…</ng-template>`,
+ * which means the wrapped element loses the directive info from its own
+ * attributes. This helper digs into the immediate parent — when it's a
+ * synthetic Template node — and pulls the structural-directive raw values
+ * back out (`ngIf=cond`, `ngForOf=orders`, `ngSwitchCase=...`).
+ *
+ * Keys are lowercased; values are the raw expression text from source.
+ */
+export function getStructuralDirectives(
+  parents: readonly VisitedElement[]
+): Map<string, string> {
+  const result = new Map<string, string>();
+  if (parents.length === 0) return result;
+  const direct = parents[parents.length - 1]!;
+  if (!isTemplateNode(direct)) return result;
+  const tmpl = direct as TmplAstTemplate;
+  // templateAttrs entries have `value` as either a plain string (TextAttribute)
+  // or an ASTWithSource (BoundAttribute) — the latter is what `*ngIf="cond"`
+  // produces. Use the raw source text in both cases so we get exactly what
+  // the developer wrote ("cond", "user.isAdmin && !disabled", etc.).
+  for (const attr of tmpl.templateAttrs ?? []) {
+    const name = typeof attr.name === 'string' ? attr.name.toLowerCase() : '';
+    if (!name) continue;
+    const v = readAttrValueText((attr as { value: unknown }).value);
+    if (v) result.set(name, v);
+  }
+  // Bound `[ngIf]="…"` form — same idea. Falls back to '<expr>' marker so the
+  // presence of a directive at least disambiguates from a wrapper-less sibling.
+  for (const input of tmpl.inputs ?? []) {
+    const name = typeof input.name === 'string' ? input.name.toLowerCase() : '';
+    if (!name || result.has(name)) continue;
+    const v = readAttrValueText((input as { value: unknown }).value);
+    if (v) {
+      result.set(name, v);
+    } else {
+      const path = extractDottedPath(input.value);
+      result.set(name, path ?? '<expr>');
+    }
+  }
+  return result;
+}
+
+/** Read either a string or an `ASTWithSource.source` field as a plain string. */
+function readAttrValueText(value: unknown): string | null {
+  if (typeof value === 'string') return value.length > 0 ? value : null;
+  if (value && typeof value === 'object' && 'source' in value) {
+    const src = (value as { source: unknown }).source;
+    if (typeof src === 'string' && src.length > 0) return src;
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Static attribute snapshots
  * ---------------------------------------------------------------------- */
 
 /**
@@ -376,7 +479,7 @@ export function getAllStaticAttributes(
 }
 
 /* ---------------------------------------------------------------------- *
- * Tier 3: bound-input identifiers
+ * Bound-input identifiers
  * ---------------------------------------------------------------------- */
 
 /**
@@ -407,7 +510,7 @@ export function getBoundIdentifiers(element: VisitedElement): Map<string, string
 }
 
 /* ---------------------------------------------------------------------- *
- * Tier 4: event handler function names
+ * Event handler function names
  * ---------------------------------------------------------------------- */
 
 /**
@@ -427,7 +530,7 @@ export function getEventHandlerNames(element: VisitedElement): Map<string, strin
 }
 
 /* ---------------------------------------------------------------------- *
- * Tier 5: interpolation data (i18n keys + bound-text paths)
+ * Interpolation data (i18n keys + bound-text paths)
  * ---------------------------------------------------------------------- */
 
 export interface InterpolationData {

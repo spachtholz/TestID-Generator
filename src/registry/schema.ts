@@ -23,7 +23,7 @@ export interface ContextAttributes {
 }
 
 export interface SemanticAttributes {
-  // --- Tier 0: legacy fields kept for backward compat -----------------------
+  // Core semantic attributes carried by the element itself.
   formcontrolname: string | null;
   name?: string | null;
   routerlink?: string | null;
@@ -34,7 +34,7 @@ export interface SemanticAttributes {
   type: string | null;
   role?: string | null;
 
-  // --- Tier 1: universal static HTML attributes ----------------------------
+  // Universal HTML attributes captured as first-class fields.
   title?: string | null;
   alt?: string | null;
   value?: string | null;
@@ -46,25 +46,31 @@ export interface SemanticAttributes {
   /** `<input>`/`<button>`-style component label input as static attribute. */
   label?: string | null;
 
-  // --- Tier 2: catch-all for everything else statically present ------------
   /** Any other static attribute (Angular `[input]="literal"` is normalised in here too). */
   static_attributes?: Record<string, string> | null;
 
-  // --- Tier 3: bound-input identifiers (e.g. [data]="currentOrder") --------
-  /** Maps input name → identifier path used in the binding (only simple paths). */
+  /** Identifier paths read by bound inputs, e.g. `[data]="currentOrder"` → `currentOrder`. */
   bound_identifiers?: Record<string, string> | null;
 
-  // --- Tier 4: event handler function names (e.g. (click)="saveOrder()") ---
+  /** Function names invoked by event handlers, e.g. `(click)="saveOrder()"` → `saveOrder`. */
   event_handlers?: Record<string, string> | null;
 
-  // --- Tier 5: i18n keys / interpolation paths -----------------------------
   /** String literals fed into translation pipes/functions inside text. */
   i18n_keys?: string[] | null;
   /** Property paths read via `{{ … }}` interpolations (e.g. `order.id`). */
   bound_text_paths?: string[] | null;
 
-  // --- Tier 8: surrounding-context anchors ---------------------------------
+  /** Class tokens of the element, lowercased, sorted, deduplicated. */
+  css_classes?: string[] | null;
+
+  /** Tag names of immediate element-like children, in source order. */
+  child_shape?: string[] | null;
+
+  /** Anchors collected by walking up to the nearest section boundary. */
   context?: ContextAttributes | null;
+
+  /** Structural directives lifted from the synthetic `<ng-template>` parent (`*ngIf`, `*ngFor`, ...). */
+  structural_directives?: Record<string, string> | null;
 
   // passthrough for future semantic attributes
   [key: string]:
@@ -102,6 +108,16 @@ export interface RegistryEntry {
    * semantics drift (e.g. aria-label rewordings). Absent = no lock-in yet.
    */
   locator_name?: string;
+  /**
+   * How this entry's testid was made unique relative to its semantic peers.
+   * Set only when a collision-resolution strategy actually had to add a
+   * disambiguator (sibling-index `--N`, hash `--a3f9`). Absent = the testid
+   * is the bare semantic id, no collision.
+   */
+  disambiguator?: {
+    kind: 'sibling-index' | 'hash';
+    value: string;
+  };
   first_seen_version: number;
   last_seen_version: number;
   /** ISO-8601; set on fresh generation or regeneration, not on carry-overs */

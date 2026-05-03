@@ -9,7 +9,7 @@ export { kebab } from '../util/id-template.js';
 
 export type HashAlgorithm = 'sha256' | 'sha1' | 'md5';
 
-export const DEFAULT_ID_FORMAT = '{component}__{element}--{key}{hash:-}';
+export const DEFAULT_ID_FORMAT = '{component}__{element}--{key}{disambiguator:--}{hash:-}';
 
 export interface GenerateIdInput {
   componentName: string;
@@ -19,6 +19,12 @@ export interface GenerateIdInput {
   fingerprint: string;
   /** true = append hash suffix for disambiguation */
   needsHashSuffix: boolean;
+  /**
+   * Sibling-index disambiguator value (e.g. `2`). When set, fills the
+   * `{disambiguator}` / `{disambiguator:--}` placeholders. Empty string =
+   * unique enough already, render the slot empty.
+   */
+  disambiguator?: string;
   hashLength?: number;
   hashAlgorithm?: HashAlgorithm;
   idFormat?: string;
@@ -50,13 +56,16 @@ export function generateId(input: GenerateIdInput): string {
   const hash = input.needsHashSuffix
     ? hashFingerprint(fingerprint, hashLength, hashAlgorithm)
     : '';
+  const disambiguator = input.disambiguator ?? '';
   const values: Record<string, string> = {
     component: kebab(componentName),
     element: elementType,
     key: primaryValue ? kebab(primaryValue) : kebab(tag),
     tag: kebab(tag),
     hash,
-    'hash:-': hash ? `-${hash}` : ''
+    'hash:-': hash ? `-${hash}` : '',
+    disambiguator,
+    'disambiguator:--': disambiguator ? `--${disambiguator}` : ''
   };
   return renderIdTemplate(format, values);
 }

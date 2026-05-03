@@ -36,20 +36,88 @@ export function xpathFor(
   return `${xpathPrefix}//*[@${attributeName}='${testid}']`;
 }
 
+/**
+ * Pick the most-distinctive semantic value to drive the `{key}` placeholder
+ * in the locator variable name. Mirrors the tagger's priority list so two
+ * elements that the tagger considered semantically distinct also get
+ * distinct, readable variable names instead of falling through to the
+ * same `text_content` and triggering a `_2`/`_3` collision suffix.
+ */
 function primarySemanticValue(entry: RegistryEntry): string {
-  const s = entry.semantic ?? {};
-  const candidates = [
+  const s = (entry.semantic ?? {}) as Record<string, unknown>;
+  const ctx = (s.context ?? {}) as Record<string, unknown>;
+  const events = (s.event_handlers ?? {}) as Record<string, unknown>;
+  const boundIdents = (s.bound_identifiers ?? {}) as Record<string, unknown>;
+  const i18nKeys = Array.isArray(s.i18n_keys) ? (s.i18n_keys as unknown[]) : [];
+  const boundTextPaths = Array.isArray(s.bound_text_paths)
+    ? (s.bound_text_paths as unknown[])
+    : [];
+  const cssClasses = Array.isArray(s.css_classes) ? (s.css_classes as unknown[]) : [];
+  const childShape = Array.isArray(s.child_shape) ? (s.child_shape as unknown[]) : [];
+  const structDirs = (s.structural_directives ?? {}) as Record<string, unknown>;
+
+  const candidates: unknown[] = [
     s.formcontrolname,
     s.name,
     s.aria_label,
+    s.label,
     s.placeholder,
+    s.routerlink,
+    ctx.label_for,
+    ctx.wrapper_label,
+    ctx.fieldset_legend,
+    ctx.wrapper_formcontrolname,
+    ctx.preceding_heading,
+    ctx.aria_labelledby_text,
+    i18nKeys[0],
     s.text_content,
-    s.routerlink
+    events.click,
+    events.change,
+    events.submit,
+    events.input,
+    s.title,
+    s.href,
+    s.alt,
+    boundIdents.data,
+    boundIdents.options,
+    boundIdents.value,
+    boundIdents.model,
+    boundTextPaths[0],
+    structDirs.ngif,
+    structDirs.ngforof,
+    structDirs.ngswitchcase,
+    s.value,
+    s.type,
+    s.role,
+    s.html_id,
+    pickReadableClass(cssClasses),
+    childShape.length > 0 ? (childShape as string[]).join('-') : undefined
   ];
   for (const c of candidates) {
     if (typeof c === 'string' && c.trim().length > 0) return c;
   }
   return entry.tag;
+}
+
+/** Pick the first non-utility class; if all are utilities, return the first. */
+function pickReadableClass(classes: readonly unknown[]): string | undefined {
+  let firstClass: string | undefined;
+  for (const c of classes) {
+    if (typeof c !== 'string' || c.length === 0) continue;
+    if (firstClass === undefined) firstClass = c;
+    if (!isLikelyUtilityClass(c)) return c;
+  }
+  return firstClass;
+}
+
+function isLikelyUtilityClass(cls: string): boolean {
+  if (/^(m|mx|my|mt|mb|ml|mr|p|px|py|pt|pb|pl|pr|w|h|min|max|gap|space|inset|top|left|right|bottom|z|order)-/.test(cls)) return true;
+  if (/^(text|bg|border|ring|shadow|font|leading|tracking|rounded|opacity|cursor|outline)-/.test(cls)) return true;
+  if (/^(flex|grid|block|inline|hidden|visible|absolute|relative|fixed|sticky|static)$/.test(cls)) return true;
+  if (/^(items|justify|content|self|place)-/.test(cls)) return true;
+  if (/^(sm|md|lg|xl|2xl):/.test(cls)) return true;
+  if (/^col-|^row-/.test(cls)) return true;
+  return false;
 }
 
 export function componentSlug(componentPath: string): string {
