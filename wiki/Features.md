@@ -32,12 +32,22 @@ The `idFormat` template accepts the placeholders `{component}`, `{element}`, `{k
 
 Two elements that share the same semantic fingerprint would otherwise produce the same testid. The `collisionStrategy` setting decides how to make them unique:
 
-- `auto` (default) — assigns readable suffixes like `--1`, `--2`, `--3` based on the source order of the elements. Falls back to a hash suffix if the format has no slot for the index.
-- `sibling-index` — always uses the readable `--N` suffix.
+- `auto` (default) — assigns readable suffixes like `--1`, `--2`, `--3`. Registry-aware: on re-runs, fingerprint-matching candidates inherit their old slot value from the previous registry; only newly-arrived members of a colliding group get the next free number. Falls back to a hash suffix if the format has no slot for the index.
+- `sibling-index` — always uses the readable `--N` suffix, with the same registry-aware slot reuse as `auto`.
 - `hash-suffix` — appends the fingerprint hash to every member of the colliding group.
 - `error` — fails the run on the first collision so a human has to add a distinguishing attribute.
 
-The chosen suffix is stored on the registry entry, so re-runs without source changes always produce the same ids.
+When the size of a colliding group changes between runs (a member was added or removed), the run emits a `collision-group-size-changed` warning into `collisions.v{N}.json`. For byte-identical groups (same fingerprint, same surrounding context) the surviving slot mapping is informationally underdetermined — the warning surfaces it so tests can be verified rather than silently shifting target.
+
+## Wrapper-aware fingerprinting
+
+`child_shape` records the tag sequence of an element's direct children, with each child annotated by its shallow primary identifier (`["h3:adresse", "p:hauptstr-12"]` instead of just `["h3", "p"]`). Two structurally-identical wrapper divs around different content stop colliding because their child rows carry different keys. Extraction is shallow by design — only the child's own attributes / static text are inspected, not grandchildren — which keeps the cost bounded and avoids cascading drift when something deeper in the subtree changes.
+
+## Stable locator names
+
+When two registry entries with different testids would produce the same bare Python variable name (`order_btn_save` from `text="Save"` on two buttons with different click handlers), the locator generator looks at the semantic snapshot to find a field that distinguishes them — `event_handlers.click`, `context.fieldset_legend`, `formcontrolname`, etc. — and appends its value as a readable suffix (`order_btn_save_saveAddress` / `order_btn_save_saveBilling`) instead of the noise-suffix `_2`/`_3`. Only truly identical entries (only the underlying hash differs) fall through to the numeric suffix.
+
+With `lockNames: true`, the **resolved** variable name (including any disambiguator suffix) is persisted on the registry entry as `locator_name`. Frozen names then claim their slots first on every subsequent run, so a newly-arrived collision-eligible entry can never steal a name that downstream Robot Framework tests already reference.
 
 ## Rollback
 

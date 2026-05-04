@@ -30,19 +30,19 @@ The fingerprint can extract these per-element fields. Pick a subset via `tagger.
 | `i18n_keys` | String literals fed into translation pipes (`translate`, `transloco`, `t`, `i18n`). |
 | `bound_text_paths` | Property paths from `{{ … }}` interpolations, e.g. `order.id`. |
 | `css_classes` | Sorted, deduplicated class tokens — often the only differentiator on bare wrappers. |
-| `child_shape` | Tag sequence of immediate element children, in source order — kills wrapper-collisions when two `<div>`s wrap different content. |
+| `child_shape` | Tag sequence of immediate element children, in source order, with each child annotated by its shallow primary identifier (`["h3:adresse", "p:hauptstr-12"]`). Kills wrapper-collisions when two `<div>`s wrap different content without needing extra markup. Extraction is shallow (depth 1). |
 | `context` | Surrounding-context anchors: `<label for>`, wrapper `<mat-label>` / `<legend>`, preceding `<h*>`, parent `formControlName`, `aria-labelledby`. |
 | `structural_directives` | `*ngIf` / `*ngFor` / `*ngSwitchCase` lifted from the synthetic `<ng-template>` wrapper Angular generates. |
 
 ## Useful top-level options
 
 - `tagger.componentNaming` / `locators.componentNaming` — `'basename'` (legacy default), `'basename-strict'` (fail loudly), `'disambiguate'` (path-prefix on collision). Recommended for monorepos.
-- `tagger.collisionStrategy` — `'auto'` (default; tries readable `--1`/`--2` sibling-index first, falls back to `{hash}`), `'sibling-index'` (always `--N`), `'hash-suffix'` (always `{hash}`), `'error'` (throw).
+- `tagger.collisionStrategy` — `'auto'` (default; tries readable `--1`/`--2` sibling-index first, falls back to `{hash}`), `'sibling-index'` (always `--N`), `'hash-suffix'` (always `{hash}`), `'error'` (throw). Both sibling-index strategies are **registry-aware**: on re-runs, fingerprint-matching candidates inherit their old slot from the previous registry; only newly-arrived members of a colliding group get the next free number.
 - `tagger.idFormat` placeholders — `{component}`, `{element}`, `{key}`, `{tag}`, `{hash}`, `{hash:-}`, `{disambiguator}`, `{disambiguator:--}` (the `:--` variants render as `--<value>` when set, empty otherwise).
 - `tagger.includeUtilityClasses` — when `true`, Tailwind / utility-shaped classes are eligible to drive the readable `{key}` segment. Off by default.
 - `tagger.registry.semanticFields` — pick exactly which fields to persist.
 - `tagger.registryInputDir` / `tagger.registryOutputDir` — read previous registry from one path, write fresh snapshots to another (CI / hermetic-build setups).
-- `locators.lockNames` — freeze Python variable names once written, so existing tests survive semantic drift.
+- `locators.lockNames` — freeze Python variable names once written, so existing tests survive semantic drift. The **resolved** name (including any `_2` / `_saveAddress` disambiguator suffix from the semantic-discrimination pass) is persisted, and the next run processes frozen names first — a newly-arrived collision-eligible entry never steals a name your tests already reference.
 
 ## Quick copy
 

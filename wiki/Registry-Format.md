@@ -24,7 +24,9 @@ Each tagger run writes two files into `registryDir`:
   "first_seen_version": 1,
   "last_seen_version": 7,
   "last_generated_at": "2026-04-17T10:00:00Z",
-  "generation_history": [1]
+  "generation_history": [1],
+  "disambiguator": { "kind": "sibling-index", "value": "1" },
+  "locator_name": "orderList_primengTable_auftragsliste"
 }
 ```
 
@@ -43,6 +45,8 @@ Each tagger run writes two files into `registryDir`:
 | `dynamic_children` | profile-gated | Overlay/pop-up selector pattern for PrimeNG dropdowns, calendars, etc. |
 | `last_generated_at` | profile-gated | ISO timestamp of the last (re-)generation. |
 | `generation_history` | profile-gated | Versions in which the entry was created or recreated. |
+| `disambiguator` | only when collision was resolved | `{ kind: 'sibling-index' \| 'hash', value }`. The sibling-index resolver uses this on subsequent runs to keep the slot stable: a fingerprint-matching candidate inherits the same value, new arrivals take the next free number. |
+| `locator_name` | only when `locators.lockNames` is on | The resolved Python variable name (including any disambiguator suffix from semantic discrimination or `_N` fallback) emitted by `gen-locators`. Locked once written so it survives semantic drift and the frozen-first disambiguation prevents a newcomer from stealing it. |
 
 Optional fields are controlled by `tagger.registry.profile` (`minimal` / `standard` / `full`) plus per-field overrides. See [Configuration](Configuration) for the profile matrix.
 

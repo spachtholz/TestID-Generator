@@ -26,12 +26,7 @@ export interface CollisionWarning {
   fingerprint: string;
   /** Snapshot of all extracted semantic data — used by the diagnostic dump. */
   semantic?: Record<string, unknown>;
-  /**
-   * For 'collision-group-size-changed' only: how the group's member count
-   * differs from the previous registry. Tells the user whether the surviving
-   * mapping might have shifted identity and against which slot count to
-   * verify their tests.
-   */
+  /** Set only for 'collision-group-size-changed' so the formatter can tell. */
   previousGroupSize?: number;
   currentGroupSize?: number;
 }

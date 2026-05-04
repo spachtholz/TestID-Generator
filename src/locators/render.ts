@@ -1,7 +1,7 @@
 // Pure renderers for the locator .py files. No I/O.
 
 import { createHash } from 'node:crypto';
-import { renderIdTemplate } from '../util/id-template.js';
+import { kebab, renderIdTemplate } from '../util/id-template.js';
 import type { RegistryEntry } from '../registry/index.js';
 import type { LocatorEntry, LocatorModule } from './types.js';
 
@@ -21,6 +21,19 @@ export function camelCaseTestid(testid: string): string {
       .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
       .join('');
   return /^[0-9]/.test(joined) ? `tid${joined.charAt(0).toUpperCase()}${joined.slice(1)}` : joined;
+}
+
+/** Like `camelCaseTestid`, but preserves boundaries already in the input
+ * (`saveAddress` stays `saveAddress`) — needed because discriminator values
+ * often come from source-code identifiers in their original casing. */
+export function camelCaseDiscriminator(value: string): string {
+  if (!value) return '';
+  const slug = kebab(value);
+  if (slug === 'unknown' || slug.length === 0) return '';
+  const parts = slug.split('-').filter((p) => p.length > 0);
+  if (parts.length === 0) return '';
+  const [first, ...rest] = parts;
+  return first! + rest.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');
 }
 
 export function filenameForComponent(component: string): string {
@@ -97,6 +110,93 @@ function primarySemanticValue(entry: RegistryEntry): string {
     if (typeof c === 'string' && c.trim().length > 0) return c;
   }
   return entry.tag;
+}
+
+/**
+ * Priority order for the secondary-discriminator pass: identifier-like fields
+ * (stable across edits) come first, soft text and styling fields last.
+ */
+type FieldExtractor = (entry: RegistryEntry) => string | undefined;
+
+export const DISCRIMINATOR_FIELDS: readonly FieldExtractor[] = [
+  (e) => stringOrNull(e.semantic.formcontrolname),
+  (e) => stringOrNull(e.semantic.name),
+  (e) => stringOrNull(e.semantic.routerlink),
+  (e) => stringOrNull(e.semantic.href),
+  (e) => stringOrNull(e.semantic.html_for),
+  (e) => stringOrNull(e.semantic.html_id),
+  (e) => stringOrNull(e.semantic.aria_label),
+  (e) => stringOrNull(e.semantic.label),
+  (e) => stringOrNull(e.semantic.context?.label_for),
+  (e) => stringOrNull(e.semantic.context?.wrapper_label),
+  (e) => stringOrNull(e.semantic.context?.fieldset_legend),
+  (e) => stringOrNull(e.semantic.context?.preceding_heading),
+  (e) => stringOrNull(e.semantic.context?.wrapper_formcontrolname),
+  (e) => stringOrNull(e.semantic.context?.aria_labelledby_text),
+  (e) => stringFromMap(e.semantic.event_handlers, 'click'),
+  (e) => stringFromMap(e.semantic.event_handlers, 'submit'),
+  (e) => stringFromMap(e.semantic.event_handlers, 'change'),
+  (e) => stringFromMap(e.semantic.event_handlers, 'input'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'data'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'options'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'value'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'model'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'item'),
+  (e) => stringFromMap(e.semantic.bound_identifiers, 'items'),
+  (e) => stringOrNull(e.semantic.placeholder),
+  (e) => stringOrNull(e.semantic.title),
+  (e) => stringOrNull(e.semantic.text_content),
+  (e) => stringOrNull(e.semantic.alt),
+  (e) => stringOrNull(e.semantic.value),
+  (e) => stringOrNull(e.semantic.type),
+  (e) => stringOrNull(e.semantic.role),
+  (e) => stringFromMap(e.semantic.static_attributes, 'severity'),
+  (e) => stringFromMap(e.semantic.static_attributes, 'variant'),
+  (e) => stringFromMap(e.semantic.static_attributes, 'icon'),
+  (e) => {
+    const cs = e.semantic.child_shape;
+    if (!Array.isArray(cs) || cs.length === 0) return undefined;
+    return cs.join('-');
+  }
+];
+
+function stringOrNull(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function stringFromMap(map: unknown, key: string): string | undefined {
+  if (!map || typeof map !== 'object') return undefined;
+  const v = (map as Record<string, unknown>)[key];
+  return stringOrNull(v);
+}
+
+/**
+ * Returns one value per member when a single field gives every member a
+ * distinct non-empty value. A value is rejected when it equals the entry's
+ * own primary — appending `key_key` carries no info for the reader.
+ */
+export function findLocatorDiscriminator(
+  members: readonly { testid: string; entry: RegistryEntry }[]
+): string[] | null {
+  if (members.length === 0) return null;
+  for (const extract of DISCRIMINATOR_FIELDS) {
+    const values: string[] = [];
+    const seen = new Set<string>();
+    let ok = true;
+    for (const m of members) {
+      const v = extract(m.entry);
+      if (!v) { ok = false; break; }
+      const primary = primarySemanticValue(m.entry);
+      if (v === primary) { ok = false; break; }
+      if (seen.has(v)) { ok = false; break; }
+      seen.add(v);
+      values.push(v);
+    }
+    if (ok && values.length === members.length) return values;
+  }
+  return null;
 }
 
 /** Pick the first non-utility class; if all are utilities, return the first. */
@@ -199,8 +299,10 @@ export function buildLocatorEntry(
   options: BuildLocatorEntryOptions
 ): LocatorEntry {
   let variable: string;
-  if (options.frozenName !== undefined && options.frozenName.length > 0) {
-    variable = options.frozenName;
+  const usedFrozen =
+    options.frozenName !== undefined && options.frozenName.length > 0;
+  if (usedFrozen) {
+    variable = options.frozenName!;
   } else if (options.entry !== undefined) {
     variable = renderVariableName(
       options.entry,
@@ -214,6 +316,7 @@ export function buildLocatorEntry(
   return {
     variable,
     selector: xpathFor(testid, options.attributeName, options.xpathPrefix),
-    testid
+    testid,
+    frozen: usedFrozen
   };
 }

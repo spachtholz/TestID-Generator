@@ -70,11 +70,11 @@ When two elements produce the same semantic id, the strategy decides how to make
 | Strategy | What it does | When to use |
 |---|---|---|
 | `auto` (default) | Tries the readable sibling-index first (`--1`, `--2`). Falls back to `{hash}` when the format has no slot for the index. | Recommended for new projects. |
-| `sibling-index` | Always assigns `--1`, `--2`, … in source order. | When you want fully readable testids and accept that adding a new colliding sibling can shift the numbering. |
+| `sibling-index` | Assigns `--1`, `--2`, … via the `{disambiguator}` slot. **Registry-aware**: when a previous registry exists, fingerprint-matching candidates inherit their old slot value; only genuinely new members of a colliding group get the next free number. | When you want fully readable testids and stability under insertion / deletion of *non*-byte-identical siblings. |
 | `hash-suffix` | Appends the `{hash}` value. The whole colliding group gets a hash suffix. | When you prefer opaque, position-independent ids. |
 | `error` | Throws on the first collision. | When you want the build to fail until the template is fixed. |
 
-The sibling-index value is sorted by the element's position in the source file. Re-runs without source changes always produce the same numbering. The picked value is stored as `disambiguator` on the registry entry so it survives carry-over between runs.
+The sibling-index value is stored as `disambiguator` on the registry entry. On the next run the resolver looks the value up first — fingerprint-matching candidates keep their slot, new members (or anything whose fingerprint changed) get the next free numeric value. For byte-identical groups (same fingerprint, no surrounding context to split them) where a member is *inserted in front* or *deleted from the middle*, the mapping is informationally underdetermined; the run emits a `collision-group-size-changed` warning into `collisions.v{N}.json` so the user can verify their tests against the surviving slots.
 
 ### `tagger.registry` - field selection
 
@@ -164,7 +164,7 @@ plus full history is read from the shared location.
 | `attributeName` | (inherits `tagger.attributeName`) | Override the attribute used in generated XPaths. |
 | `xpathPrefix` | `"xpath:"` | Prepended to every XPath. Set to `""` for SeleniumLibrary auto-detect. |
 | `mode` | `"merge"` | Write strategy. `merge` preserves manual lines and rebuilds only `# testid-managed` lines; `overwrite` rewrites from scratch; `refuse` fails if the file exists. |
-| `lockNames` | `false` | Persist each emitted variable name onto its registry entry (`locator_name`) and reuse it on later runs. Keeps Python constants stable even when semantics drift (aria-label rewordings, text changes, etc.). |
+| `lockNames` | `false` | Persist each emitted variable name onto its registry entry (`locator_name`) and reuse it on later runs. Keeps Python constants stable even when semantics drift (aria-label rewordings, text changes, etc.). The **resolved** name is persisted, including any disambiguator suffix — so a frozen `order_btn_save_2` keeps that exact form when the next run sees the same registry. |
 | `regenerateNames` | `false` | One-shot opt-out: with `lockNames`, recompute every persisted name from the current `variableFormat` and overwrite the registry. Use after changing the template. |
 | `renameThreshold` | `0.8` | Similarity cutoff (0.1..1.0) for rename-aware carry-over of `locator_name`. When the tagger generates a new testid whose fingerprint is highly similar to a removed previous entry holding a `locator_name`, the name is inherited. Raise toward `1.0` for stricter matching. |
 | `overwrite` | *deprecated* | Legacy boolean. Maps to `mode: "overwrite"` (`true`) or `mode: "refuse"` (`false`). Ignored when `mode` is set. |
@@ -208,11 +208,12 @@ The rendered string is sanitised to a valid Python identifier; leading digits ar
 
 ### Locator-name stability
 
-Three independent levers, increasingly robust:
+Four independent levers, increasingly robust:
 
 1. **`variableFormat: "{testid}"`** — derive the Python constant from the raw (preserved) testid. Structural template edits (wrapping, reordering) don't touch the testid in the HTML, so the Python name also stays put. Semantic edits (aria-label rewordings) that change the testid still cause the name to change in lockstep.
-2. **`lockNames: true`** — on the first run, each emitted name is written back onto its registry entry as `locator_name` and reused verbatim on every subsequent run. The Python constant survives even when the testid itself changes (e.g. after an aria-label rewording), at the cost of a slight registry round-trip. To intentionally pick up a new `variableFormat` for all entries, run once with `--regenerate-names`.
-3. **`renameThreshold`** (combined with `lockNames`) — makes lever 2 survive in workflows where `data-testid` attributes are not committed to git. The tagger regenerates testids deterministically each build; when a fingerprint-relevant field changes (e.g. an aria-label is reworded), the *new* testid string is unequal to the old key and would normally appear as a brand-new entry. The merge compares every new entry against the removed previous entries via the differ's similarity algorithm and transfers the held `locator_name` when the score clears `renameThreshold`. Net effect: the generated `.py` file updates its XPath value but keeps the Python constant — Robot Framework tests don't break.
+2. **Semantic discriminator (always on)** — when two entries with different testids would produce the same bare variable name (`order_btn_save` from text="Save" twice), the generator first tries to find a semantic field that distinguishes them — `event_handlers.click`, `context.fieldset_legend`, `formcontrolname`, etc. — and appends its value as a readable suffix (`order_btn_save_saveAddress` / `order_btn_save_saveBilling`) instead of the noise-suffix `_2`/`_3`. Only when nothing in the snapshot can split the group does the numeric fallback kick in.
+3. **`lockNames: true`** — on the first run, each emitted name (including any disambiguator suffix from lever 2) is written back onto its registry entry as `locator_name` and reused verbatim on every subsequent run. **Frozen-first**: when a new colliding entry arrives in a later run, the locked names claim their slots before the newcomer is processed — the new entry gets the suffix, never the old one that downstream tests already reference. To intentionally pick up a new `variableFormat` for all entries, run once with `--regenerate-names`.
+4. **`renameThreshold`** (combined with `lockNames`) — makes lever 3 survive in workflows where `data-testid` attributes are not committed to git. The tagger regenerates testids deterministically each build; when a fingerprint-relevant field changes (e.g. an aria-label is reworded), the *new* testid string is unequal to the old key and would normally appear as a brand-new entry. The merge compares every new entry against the removed previous entries via the differ's similarity algorithm and transfers the held `locator_name` when the score clears `renameThreshold`. Net effect: the generated `.py` file updates its XPath value but keeps the Python constant — Robot Framework tests don't break.
 
 ---
 

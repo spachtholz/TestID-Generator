@@ -1,5 +1,5 @@
 {
-  "_comment": "Everything turned on - full registry fields, activity log, backups, strict retention, regenerated-entry splitting in the diff, monorepo-safe component naming, locked locator names. Good starting point for a real project; trim the bits you don't need.",
+  "_comment": "Everything turned on - full registry fields, activity log, backups, strict retention, regenerated-entry splitting in the diff, monorepo-safe component naming, locked locator names. With lockNames the resolved Python variable (including any disambiguator suffix from the semantic-discrimination pass) is persisted as locator_name and frozen-first on subsequent runs. Good starting point for a real project; trim the bits you don't need.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],

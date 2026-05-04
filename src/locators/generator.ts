@@ -7,9 +7,11 @@ import type { Registry, RegistryEntry } from '../registry/index.js';
 import { serializeRegistry } from '../registry/index.js';
 import {
   buildLocatorEntry,
+  camelCaseDiscriminator,
   componentSlug,
   DEFAULT_VARIABLE_FORMAT,
   filenameForComponent,
+  findLocatorDiscriminator,
   renderLocatorModule,
   renderVariableName
 } from './render.js';
@@ -48,12 +50,12 @@ export async function generateLocators(
   const componentPaths = uniqueComponentPaths(registry);
   const { labels } = resolveComponentNames(componentPaths, naming);
 
-  // Frozen names are derived using the resolved (disambiguated) component label,
-  // so a later switch to disambiguate doesn't strand a registry full of stale
-  // basename-derived locator_name values.
-  const registryMutated = lockNames
-    ? reconcileLocatorNames(registry, variableFormat, regenerateNames, labels)
-    : false;
+  let registryMutated = false;
+  if (lockNames && regenerateNames) {
+    if (regenerateLocatorNames(registry, variableFormat, labels)) {
+      registryMutated = true;
+    }
+  }
 
   const modules = buildModules({
     registry,
@@ -63,6 +65,12 @@ export async function generateLocators(
     labels,
     lockNames
   });
+
+  if (lockNames) {
+    if (writebackResolvedLocatorNames(registry, modules)) {
+      registryMutated = true;
+    }
+  }
 
   await fs.mkdir(options.outDir, { recursive: true });
   const writtenPaths: string[] = [];
@@ -93,26 +101,40 @@ export async function generateLocators(
   return result;
 }
 
-function reconcileLocatorNames(
+function regenerateLocatorNames(
   registry: Registry,
   variableFormat: string,
-  regenerate: boolean,
   labels: Map<string, string>
 ): boolean {
   let changed = false;
   for (const [testid, entry] of Object.entries(registry.entries)) {
     const componentLabel = labels.get(entry.component);
     const expected = renderVariableName(entry, testid, variableFormat, componentLabel);
-    if (regenerate) {
-      if (entry.locator_name !== expected) {
-        entry.locator_name = expected;
-        changed = true;
-      }
-      continue;
-    }
-    if (entry.locator_name === undefined) {
+    if (entry.locator_name !== expected) {
       entry.locator_name = expected;
       changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Persists the disambiguated variable as `locator_name` so the next run sees
+ * the resolved form (`save_2`) as frozen, not the bare collidable form.
+ */
+function writebackResolvedLocatorNames(
+  registry: Registry,
+  modules: readonly LocatorModule[]
+): boolean {
+  let changed = false;
+  for (const mod of modules) {
+    for (const entry of mod.entries) {
+      const reg = registry.entries[entry.testid];
+      if (!reg) continue;
+      if (reg.locator_name !== entry.variable) {
+        reg.locator_name = entry.variable;
+        changed = true;
+      }
     }
   }
   return changed;
@@ -191,7 +213,7 @@ function buildModules(args: {
     // elements share `{component}/{element}/{key}`. Make the names unique
     // deterministically so neither line silently overwrites the other when
     // Robot reads the module.
-    disambiguateVariableNames(entries, lockNames);
+    disambiguateVariableNames(entries, lockNames, registry);
     entries.sort((a, b) => a.variable.localeCompare(b.variable));
     modules.push({
       component,
@@ -204,50 +226,106 @@ function buildModules(args: {
 }
 
 /**
- * Mutate `entries` in place so every `variable` is unique. The first hit of
- * a given base name keeps the bare variable; subsequent hits become
- * `<name>_2`, `<name>_3`, ... in deterministic testid order so the suffix
- * binding is stable across runs (provided testids are stable, which they
- * generally are once the registry has carried them over once).
- *
- * Frozen names from `lockNames` are treated as authoritative and never
- * suffixed — a frozen name colliding with another entry indicates a real
- * data corruption (manual edit) rather than a pure name-format issue.
+ * With `lockNames` on, frozen entries claim their slots first so a new
+ * colliding entry can never steal a locator name that downstream tests
+ * already reference. Within each pass, ordering is by testid for cross-run
+ * stability.
  */
-function disambiguateVariableNames(entries: LocatorEntry[], lockNames: boolean): void {
+function disambiguateVariableNames(
+  entries: LocatorEntry[],
+  lockNames: boolean,
+  registry: Registry
+): void {
   if (entries.length < 2) return;
 
-  // Process in deterministic order so first-claim semantics are stable.
-  const ordered = [...entries].sort((a, b) => a.testid.localeCompare(b.testid));
   const claimed = new Set<string>();
 
-  for (const entry of ordered) {
+  if (lockNames) {
+    const frozen = entries
+      .filter((e) => e.frozen)
+      .sort((a, b) => a.testid.localeCompare(b.testid));
+    claimWithSuffixFallback(frozen, claimed);
+  }
+
+  const unfrozen = (lockNames ? entries.filter((e) => !e.frozen) : entries)
+    .slice()
+    .sort((a, b) => a.testid.localeCompare(b.testid));
+  claimWithSemanticDiscrimination(unfrozen, claimed, registry);
+}
+
+/** Frozen-vs-frozen collisions can only come from a manual edit or buggy
+ * prior run; the later (by testid) entry takes a numeric suffix so neither
+ * row is dropped. No semantic rewriting — the persisted name is the contract. */
+function claimWithSuffixFallback(
+  entries: readonly LocatorEntry[],
+  claimed: Set<string>
+): void {
+  for (const entry of entries) {
     if (claimed.has(entry.variable)) {
-      if (lockNames) {
-        // The frozen name is wrong (collides) — this is a hard inconsistency,
-        // but we still don't want to drop a row. Append a stable suffix
-        // derived from the testid hash so it at least diverges. We don't
-        // re-issue a clean `_2` because that would silently rename a
-        // previously-locked variable.
-        let candidate = entry.variable;
-        let n = 2;
-        while (claimed.has(candidate)) {
-          candidate = `${entry.variable}_${n}`;
-          n++;
-        }
-        entry.variable = candidate;
-      } else {
-        let n = 2;
-        let candidate = `${entry.variable}_${n}`;
-        while (claimed.has(candidate)) {
-          n++;
-          candidate = `${entry.variable}_${n}`;
-        }
-        entry.variable = candidate;
-      }
+      entry.variable = nextFreeSuffix(entry.variable, claimed);
     }
     claimed.add(entry.variable);
   }
+}
+
+function claimWithSemanticDiscrimination(
+  entries: readonly LocatorEntry[],
+  claimed: Set<string>,
+  registry: Registry
+): void {
+  const groups = new Map<string, LocatorEntry[]>();
+  for (const e of entries) {
+    let bucket = groups.get(e.variable);
+    if (!bucket) {
+      bucket = [];
+      groups.set(e.variable, bucket);
+    }
+    bucket.push(e);
+  }
+
+  const groupKeys = [...groups.keys()].sort();
+  for (const bare of groupKeys) {
+    const members = groups.get(bare)!;
+
+    if (members.length === 1 && !claimed.has(bare)) {
+      claimed.add(bare);
+      continue;
+    }
+
+    const discriminator = findLocatorDiscriminator(
+      members.map((m) => ({
+        testid: m.testid,
+        entry: registry.entries[m.testid]!
+      }))
+    );
+    if (discriminator) {
+      const candidates = members.map((_, i) => `${bare}_${camelCaseDiscriminator(discriminator[i]!)}`);
+      if (candidates.every((c) => !claimed.has(c))) {
+        for (let i = 0; i < members.length; i++) {
+          members[i]!.variable = candidates[i]!;
+          claimed.add(candidates[i]!);
+        }
+        continue;
+      }
+    }
+
+    for (const m of members) {
+      if (claimed.has(m.variable)) {
+        m.variable = nextFreeSuffix(m.variable, claimed);
+      }
+      claimed.add(m.variable);
+    }
+  }
+}
+
+function nextFreeSuffix(base: string, claimed: ReadonlySet<string>): string {
+  let n = 2;
+  let candidate = `${base}_${n}`;
+  while (claimed.has(candidate)) {
+    n++;
+    candidate = `${base}_${n}`;
+  }
+  return candidate;
 }
 
 function uniqueComponentPaths(registry: Registry): string[] {

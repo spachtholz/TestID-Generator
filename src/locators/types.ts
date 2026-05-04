@@ -12,6 +12,8 @@ export interface LocatorEntry {
   selector: string;
   /** The raw testid - kept so the replacer can locate the line later. */
   testid: string;
+  /** True when `variable` came from a previously-persisted locator_name. */
+  frozen?: boolean;
 }
 
 export interface LocatorModule {

@@ -812,29 +812,16 @@ function buildSemanticForRegistry(
   return out;
 }
 
-/**
- * One previous-registry entry that occupies a `--N` slot in a bare-id family.
- * Built up front per-component so the sibling-index resolver can keep slot
- * assignments stable across re-runs even when the source carries no testid
- * attribute to anchor on.
- */
 interface PreviousSlot {
-  /** Fully-qualified id as seen in the previous registry (`save--1`). */
   id: string;
-  /** Fingerprint used to match against current candidates. */
   fingerprint: string;
-  /** Numeric value of the `disambiguator.value` field. */
   disambiguatorValue: number;
 }
 
 /**
- * Index a component's previous-registry entries by their bare id (the
- * disambiguator-stripped form). Only entries with a `sibling-index`-kind
- * disambiguator end up here — `hash`-suffixed ids and singletons have nothing
- * to anchor on for slot reuse and are left to the per-strategy default.
- *
- * Lists are sorted by ascending `disambiguatorValue` so the resolver's greedy
- * "lowest unclaimed slot" pass produces stable, deterministic output.
+ * Only `sibling-index`-kind disambiguators are indexed — hash-suffixed ids
+ * and singletons have nothing to anchor on for slot reuse. Lists are sorted
+ * ascending so the resolver's "lowest unclaimed slot" pass is deterministic.
  */
 function buildPreviousSlotMap(
   previousEntries: Record<string, RegistryEntry> | undefined
@@ -939,9 +926,7 @@ function assignCandidateIds(args: {
     // assignment is stable across re-runs (same source → same suffix).
     indices.sort((a, b) => candidates[a]!.sortKey - candidates[b]!.sortKey);
 
-    // Surface "the bare-id family used to be a collision group, now it
-    // isn't" so the user can verify their tests against the surviving
-    // slot. Same heuristic-mapping risk as a multi→multi shrink.
+    // Group shrunk to a singleton — heuristic mapping risk, surface it.
     const previousSlotsForBare = previousSlotMap.get(bare) ?? [];
     if (indices.length === 1 && previousSlotsForBare.length > 1) {
       const c = candidates[indices[0]!]!;
@@ -1001,10 +986,6 @@ function assignCandidateIds(args: {
         previousSlots: previousSlotsForBare
       });
 
-      // Group changed size compared to the previous registry → surviving
-      // mapping for byte-identical members can shift identity. Surface it
-      // once per group so the user can verify tests rather than discover
-      // breakage later.
       if (
         previousSlotsForBare.length > 0 &&
         previousSlotsForBare.length !== indices.length
@@ -1123,29 +1104,12 @@ interface AssignmentEntry {
 }
 
 /**
- * Compute `--1`, `--2`, … assignments for a colliding group via the
- * `{disambiguator}` slot in `idFormat`. When the format has no disambiguator
- * slot, append `--N` to the bare id directly. Returns null only when the
- * group is empty (real impossibility); always otherwise returns N entries.
- *
- * Algorithm (registry-aware when `previousSlots` is non-empty):
- *
- *   1. **Lock** every already-tagged candidate to the numeric suffix parsed
- *      out of its existing testid (`save--3` → 3). Source-anchored ids win
- *      over any registry hint.
- *   2. **Reuse** previous-registry slots: walk candidates in source order;
- *      for each unlocked candidate, claim the lowest unclaimed slot whose
- *      stored fingerprint matches the candidate's current fingerprint.
- *   3. **Fill** the remainder: candidates that found no fingerprint match
- *      (genuinely new members or fingerprint-edited ones) get the next free
- *      numeric value, skipping anything already claimed.
- *
- * For byte-identical insertion the heuristic preserves stability when the
- * new element is added at the END (the existing slots match the leading
- * candidates 1:1, the trailing newcomer takes the next free value). For
- * insertion at the FRONT or MIDDLE of a byte-identical group, the mapping
- * is informationally underdetermined — the caller surfaces a
- * `collision-group-size-changed` warning so the user can verify.
+ * Three-phase resolution: (1) candidates with an existing testid lock onto
+ * its numeric suffix, (2) remaining candidates inherit the lowest unclaimed
+ * previous slot whose fingerprint matches, (3) the rest take the next free
+ * numeric value. For byte-identical insertion at the FRONT or MIDDLE of a
+ * group the mapping is informationally underdetermined — the caller surfaces
+ * a `collision-group-size-changed` warning so the user can verify.
  */
 function computeSiblingIndexAssignment(
   args: ComputeArgs & {
@@ -1160,7 +1124,6 @@ function computeSiblingIndexAssignment(
   } = args;
   if (indices.length === 0) return null;
 
-  // Phase 1: lock candidates whose source attribute already pins a slot.
   const claimedValues = new Set<number>();
   const lockedAssignments = new Map<number, number>();
   for (const i of indices) {
@@ -1174,9 +1137,8 @@ function computeSiblingIndexAssignment(
     claimedValues.add(v);
   }
 
-  // Phase 2 setup: any previous slot whose value collides with a locked
-  // existing-id is pre-claimed (so we don't hand it out to a different
-  // unlocked candidate later).
+  // Pre-claim any previous slot already locked by an existingId so it
+  // isn't handed to a different unlocked candidate.
   const claimedPreviousIdx = new Set<number>();
   for (let s = 0; s < previousSlots.length; s++) {
     if (claimedValues.has(previousSlots[s]!.disambiguatorValue)) {
@@ -1184,8 +1146,6 @@ function computeSiblingIndexAssignment(
     }
   }
 
-  // Phase 2 + 3: walk candidates in source order, prefer fingerprint-matched
-  // previous slots, fall back to next-free.
   const assignmentValue = new Map<number, number>();
   for (const idx of indices) {
     if (lockedAssignments.has(idx)) {
@@ -1211,7 +1171,6 @@ function computeSiblingIndexAssignment(
     assignmentValue.set(idx, value);
   }
 
-  // Phase 4: render ids using the resolved values.
   const out: AssignmentEntry[] = [];
   for (let n = 0; n < indices.length; n++) {
     const idx = indices[n]!;

@@ -13,6 +13,8 @@ Before/after snapshots for each stage of the tool.
 - [7. Hash-only testids with readable locator names](#7-hash-only-testids-with-readable-locator-names)
 - [8. Mixing manual and generated locators](#8-mixing-manual-and-generated-locators)
 - [9. Resolving collisions with sibling-index suffixes](#9-resolving-collisions-with-sibling-index-suffixes)
+- [10. Wrapper divs disambiguated by child semantic keys](#10-wrapper-divs-disambiguated-by-child-semantic-keys)
+- [11. Locator-name semantic discriminator](#11-locator-name-semantic-discriminator)
 
 ---
 
@@ -445,6 +447,66 @@ becomes:
 </div>
 ```
 
-The numbering follows the order the elements appear in the source file. As long as the source is unchanged, re-runs always produce the same ids. The chosen suffix is also stored on the registry entry, which keeps Robot Framework variable names stable when locked with `lockNames: true`.
+The numbering follows the order the elements appear in the source file on the first run. The chosen suffix is stored as `disambiguator` on each registry entry. On subsequent runs the resolver consults the previous registry: fingerprint-matching candidates inherit their old slot, only newly-arrived members get the next free number. So adding a fourth `Save` button to the template gives it `--4`, leaving `--1` / `--2` / `--3` pinned to the original three elements; deleting the third leaves `--1` and `--2` intact and frees `--3` for the next newcomer.
+
+Insertion or deletion *inside* a byte-identical group (no surrounding context to split it) is informationally underdetermined — the resolver still maps survivors to slots greedily and emits a `collision-group-size-changed` warning into `collisions.v{N}.json`, listing the bare id, previous size, and current size so tests can be verified.
 
 If you prefer the legacy hex-hash form, set `collisionStrategy: "hash-suffix"`. If you want the build to fail instead, set `"error"`.
+
+---
+
+## 10. Wrapper divs disambiguated by child semantic keys
+
+`child_shape` records each direct child's tag annotated with its primary identifier (`h3:adresse`), not just the bare tag name. Two wrapper divs around different content stop colliding on the fingerprint without needing extra `aria-label` markup.
+
+### Template
+
+```html
+<section>
+  <div class="card">
+    <h3>Adresse</h3>
+    <p>Hauptstr 12</p>
+  </div>
+  <div class="card">
+    <h3>Zahlung</h3>
+    <p>Visa Endung 4242</p>
+  </div>
+</section>
+```
+
+### After `testid tag`
+
+```html
+<section>
+  <div class="card" data-testid="checkout__div--card-h3-adresse-p-hauptstr-12">
+    <h3 data-testid="checkout__h3--adresse">Adresse</h3>
+    <p data-testid="checkout__p--hauptstr-12">Hauptstr 12</p>
+  </div>
+  <div class="card" data-testid="checkout__div--card-h3-zahlung-p-visa-endung-4242">
+    <h3 data-testid="checkout__h3--zahlung">Zahlung</h3>
+    <p data-testid="checkout__p--visa-endung-4242">Visa Endung 4242</p>
+  </div>
+</section>
+```
+
+The two card wrappers no longer collide — their `child_shape` entries `["h3:adresse", "p:hauptstr-12"]` vs `["h3:zahlung", "p:visa-endung-4242"]` differ — so neither needs a `--1` / `--2` suffix.
+
+Extraction is shallow (depth 1). If a heading lives at depth 2 (e.g. `<div class="card"><div class="header"><h3>…</h3></div></div>`), it isn't pulled through, and a real collision could remain — at which point you can add an `aria-label` on the wrapper or rely on the registry-aware sibling-index.
+
+---
+
+## 11. Locator-name semantic discriminator
+
+Two registry entries with **different testids** (their fingerprints differ) can still produce the same bare locator variable name when their primary semantic value is identical. Example: two `Save` buttons whose only difference is the click handler. Their testids are unique (each carries its own hash or bound-identifier) but `primarySemanticValue` picks `text="Save"` for both.
+
+The locator generator inspects the semantic snapshot for a field that distinguishes the colliding entries — event handlers, context anchors, formcontrolname, bound identifiers, etc. — and uses that as a readable suffix:
+
+```python
+# tests/locators/order.py
+order_button_save_saveAddress = "xpath://*[@data-testid='order__button--save-a3f4']"  # testid-managed
+order_button_save_saveBilling = "xpath://*[@data-testid='order__button--save-b7c2']"  # testid-managed
+```
+
+Compared with the legacy fallback (`order_button_save` + `order_button_save_2`) the suffix actually tells you which button is which. With `lockNames: true` the resolved name (including the suffix) is persisted as `locator_name`, so a third entry colliding on the bare name in a later run takes the next free numeric or semantic slot — it can never steal `order_button_save` from the entry your tests already reference.
+
+Truly identical entries (everything semantic is the same, only the underlying hash differs) still fall back to `_2` / `_3` because nothing in the snapshot can split them.
