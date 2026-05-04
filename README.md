@@ -1,6 +1,6 @@
 # testid-automation
 
-[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2020-brightgreen.svg)](https://nodejs.org/)
 [![Angular](https://img.shields.io/badge/angular-%E2%89%A5%2018-dd0031.svg)](https://angular.dev/)
