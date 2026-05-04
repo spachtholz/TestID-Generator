@@ -1,9 +1,19 @@
 // Merge freshly-generated managed locator lines into an existing .py file
-// without touching manual content. Managed = lines ending in "# testid-managed".
+// without touching manual content. Managed = lines whose trailing comment
+// starts with "# testid-managed" (optionally followed by " | YYYY-MM-DD" when
+// includeGeneratedDate is on). The date trailer is rewritten on every merge,
+// never carried over, so it always reflects the current registry state.
 
+import { renderManagedLine } from './render.js';
 import type { LocatorEntry, LocatorModule } from './types.js';
 
-const MANAGED_SUFFIX = '  # testid-managed';
+/**
+ * Matches the managed trailer with or without a `| YYYY-MM-DD` date. The
+ * marker is anchored to the end of the line; anything before it is the
+ * variable assignment we keep verbatim aside from the testid extraction.
+ */
+const MANAGED_TRAILER_PATTERN =
+  /\s{2}# testid-managed(?:\s*\|\s*(\d{4}-\d{2}-\d{2}))?\s*$/;
 
 export type ClassifiedLine =
   | { kind: 'managed'; raw: string; testid: string }
@@ -21,7 +31,7 @@ export function classifyLocatorLine(
   line: string,
   attributeName: string
 ): ClassifiedLine {
-  if (!line.endsWith(MANAGED_SUFFIX)) {
+  if (!MANAGED_TRAILER_PATTERN.test(line)) {
     return { kind: 'manual', raw: line };
   }
   const testidPattern = new RegExp(`@${escapeRegex(attributeName)}='([^']+)'`);
@@ -56,10 +66,6 @@ export function splitIntoBlocks(source: string, attributeName: string): LocatorB
     }
   }
   return blocks;
-}
-
-function renderManagedLine(entry: LocatorEntry): string {
-  return `${entry.variable} = "${entry.selector}"${MANAGED_SUFFIX}`;
 }
 
 export interface MergeInput {

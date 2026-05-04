@@ -14,6 +14,13 @@ export interface LocatorEntry {
   testid: string;
   /** True when `variable` came from a previously-persisted locator_name. */
   frozen?: boolean;
+  /**
+   * ISO date (`YYYY-MM-DD`) of the entry's last (re-)generation in the
+   * registry. Carried through so the renderer can surface it in the managed
+   * comment when `includeGeneratedDate` is on. Absent = registry entry has
+   * no `last_generated_at` (e.g. minimal profile).
+   */
+  lastGeneratedDate?: string;
 }
 
 export interface LocatorModule {
@@ -95,6 +102,19 @@ export interface GenerateLocatorsOptions {
    * naming, plus orphan-file detection.
    */
   migrationReport?: boolean;
+  /**
+   * When true, the renderer appends ` | YYYY-MM-DD` (from `last_generated_at`)
+   * to the `# testid-managed` marker. The merge step strips and re-renders
+   * the suffix so dates always reflect the current run, never stale ones.
+   */
+  includeGeneratedDate?: boolean;
+  /**
+   * Strategy when no semantic discriminator can split colliding variable
+   * names. `numeric` (default, legacy) walks `_2`, `_3`, …; `hash` appends
+   * a short fingerprint hash that is stable across runs and independent of
+   * iteration order.
+   */
+  collisionSuffix?: 'numeric' | 'hash';
 }
 
 export interface MigrationReportEntry {

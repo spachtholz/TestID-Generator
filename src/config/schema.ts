@@ -55,7 +55,20 @@ export const LocatorsConfigSchema = z
      * Python constants survive semantic edits (aria-label rewordings, etc.).
      * Same algorithm as the differ. Raise toward 1.0 for stricter matching.
      */
-    renameThreshold: z.number().min(0.1).max(1).default(0.8)
+    renameThreshold: z.number().min(0.1).max(1).default(0.8),
+    /**
+     * When true, the managed comment carries the entry's `last_generated_at`
+     * date (`# testid-managed | 2026-05-05`). Lets reviewers see at a glance
+     * which locators changed semantics in the last tagger run.
+     */
+    includeGeneratedDate: z.boolean().default(false),
+    /**
+     * Last-resort suffix when no semantic field can split a locator-name
+     * collision. `numeric` (default) appends `_2`, `_3`, …; `hash` appends a
+     * short fingerprint hash that is stable across runs and independent of
+     * sort order — entries keep their suffix even when colliding peers move.
+     */
+    collisionSuffix: z.enum(['numeric', 'hash']).default('numeric')
   })
   .default({});
 

@@ -308,6 +308,58 @@ describe('locator-name semantic discriminator', () => {
     expect(py).not.toMatch(/_(\d)\b/);
   });
 
+  it('asymmetric child_shape: one wrapper has children, the other is empty — both get readable suffixes', async () => {
+    // Real-world case the user flagged: two structurally similar wrappers,
+    // one filled with content, one self-closing/empty. Strict pass rejects
+    // child_shape because the empty side returns undefined; the loose pass
+    // ('none' sentinel) lets the field disambiguate so neither member has
+    // to fall through to the numeric/hash suffix.
+    const registry: Registry = {
+      ...createEmptyRegistry(1, '2026-04-17T10:00:00Z'),
+      entries: {
+        'order__div--card-aaaa': {
+          component: 'src/order.component.html',
+          tag: 'div',
+          element_type: 'dom_div',
+          fingerprint: 'fp-A',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Card',
+            type: null,
+            child_shape: ['h3:adresse', 'p:hauptstr-12']
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        },
+        'order__div--card-bbbb': {
+          component: 'src/order.component.html',
+          tag: 'div',
+          element_type: 'dom_div',
+          fingerprint: 'fp-B',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Card',
+            type: null,
+            child_shape: []
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        }
+      }
+    };
+
+    await generateLocators(registry, { outDir, lockNames: true });
+    const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
+
+    expect(py).toContain('order_domDiv_card_h3AdressePHauptstr12');
+    expect(py).toContain('order_domDiv_card_none');
+    expect(py).not.toMatch(/order_domDiv_card_2\b/);
+  });
+
   it('persists the semantically-discriminated name back to the registry under lockNames', async () => {
     const registry: Registry = {
       ...createEmptyRegistry(1, '2026-04-17T10:00:00Z'),

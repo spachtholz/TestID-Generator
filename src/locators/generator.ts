@@ -3,6 +3,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import type { Registry, RegistryEntry } from '../registry/index.js';
 import { serializeRegistry } from '../registry/index.js';
 import {
@@ -46,6 +47,8 @@ export async function generateLocators(
   const naming: ComponentNamingMode = options.componentNaming ?? 'basename';
   const lockNames = options.lockNames === true;
   const regenerateNames = options.regenerateNames === true;
+  const includeGeneratedDate = options.includeGeneratedDate === true;
+  const collisionSuffix = options.collisionSuffix ?? 'numeric';
 
   const componentPaths = uniqueComponentPaths(registry);
   const { labels } = resolveComponentNames(componentPaths, naming);
@@ -63,7 +66,9 @@ export async function generateLocators(
     xpathPrefix,
     variableFormat,
     labels,
-    lockNames
+    lockNames,
+    includeGeneratedDate,
+    collisionSuffix
   });
 
   if (lockNames) {
@@ -188,8 +193,19 @@ function buildModules(args: {
   variableFormat: string;
   labels: Map<string, string>;
   lockNames: boolean;
+  includeGeneratedDate: boolean;
+  collisionSuffix: 'numeric' | 'hash';
 }): LocatorModule[] {
-  const { registry, attributeName, xpathPrefix, variableFormat, labels, lockNames } = args;
+  const {
+    registry,
+    attributeName,
+    xpathPrefix,
+    variableFormat,
+    labels,
+    lockNames,
+    includeGeneratedDate,
+    collisionSuffix
+  } = args;
   const byComponent = new Map<string, LocatorEntry[]>();
   for (const [testid, entry] of Object.entries(registry.entries)) {
     const componentLabel = labels.get(entry.component) ?? componentSlug(entry.component);
@@ -201,6 +217,9 @@ function buildModules(args: {
       componentLabel,
       frozenName: lockNames ? entry.locator_name : undefined
     });
+    if (includeGeneratedDate && entry.last_generated_at) {
+      locator.lastGeneratedDate = isoDateOnly(entry.last_generated_at);
+    }
     const list = byComponent.get(componentLabel) ?? [];
     list.push(locator);
     byComponent.set(componentLabel, list);
@@ -213,7 +232,7 @@ function buildModules(args: {
     // elements share `{component}/{element}/{key}`. Make the names unique
     // deterministically so neither line silently overwrites the other when
     // Robot reads the module.
-    disambiguateVariableNames(entries, lockNames, registry);
+    disambiguateVariableNames(entries, lockNames, registry, collisionSuffix);
     entries.sort((a, b) => a.variable.localeCompare(b.variable));
     modules.push({
       component,
@@ -225,6 +244,14 @@ function buildModules(args: {
   return modules;
 }
 
+function isoDateOnly(timestamp: string): string {
+  // Tolerate `2026-05-05T10:00:00Z` and bare `2026-05-05` alike. Anything
+  // that doesn't start with a YYYY-MM-DD prefix is dropped silently — better
+  // than emitting a malformed comment.
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(timestamp);
+  return match ? match[1]! : '';
+}
+
 /**
  * With `lockNames` on, frozen entries claim their slots first so a new
  * colliding entry can never steal a locator name that downstream tests
@@ -234,7 +261,8 @@ function buildModules(args: {
 function disambiguateVariableNames(
   entries: LocatorEntry[],
   lockNames: boolean,
-  registry: Registry
+  registry: Registry,
+  collisionSuffix: 'numeric' | 'hash'
 ): void {
   if (entries.length < 2) return;
 
@@ -244,13 +272,13 @@ function disambiguateVariableNames(
     const frozen = entries
       .filter((e) => e.frozen)
       .sort((a, b) => a.testid.localeCompare(b.testid));
-    claimWithSuffixFallback(frozen, claimed);
+    claimWithSuffixFallback(frozen, claimed, registry, collisionSuffix);
   }
 
   const unfrozen = (lockNames ? entries.filter((e) => !e.frozen) : entries)
     .slice()
     .sort((a, b) => a.testid.localeCompare(b.testid));
-  claimWithSemanticDiscrimination(unfrozen, claimed, registry);
+  claimWithSemanticDiscrimination(unfrozen, claimed, registry, collisionSuffix);
 }
 
 /** Frozen-vs-frozen collisions can only come from a manual edit or buggy
@@ -258,11 +286,18 @@ function disambiguateVariableNames(
  * row is dropped. No semantic rewriting — the persisted name is the contract. */
 function claimWithSuffixFallback(
   entries: readonly LocatorEntry[],
-  claimed: Set<string>
+  claimed: Set<string>,
+  registry: Registry,
+  collisionSuffix: 'numeric' | 'hash'
 ): void {
   for (const entry of entries) {
     if (claimed.has(entry.variable)) {
-      entry.variable = nextFreeSuffix(entry.variable, claimed);
+      entry.variable = nextFreeSuffix(
+        entry.variable,
+        claimed,
+        registry.entries[entry.testid]?.fingerprint,
+        collisionSuffix
+      );
     }
     claimed.add(entry.variable);
   }
@@ -271,7 +306,8 @@ function claimWithSuffixFallback(
 function claimWithSemanticDiscrimination(
   entries: readonly LocatorEntry[],
   claimed: Set<string>,
-  registry: Registry
+  registry: Registry,
+  collisionSuffix: 'numeric' | 'hash'
 ): void {
   const groups = new Map<string, LocatorEntry[]>();
   for (const e of entries) {
@@ -311,14 +347,38 @@ function claimWithSemanticDiscrimination(
 
     for (const m of members) {
       if (claimed.has(m.variable)) {
-        m.variable = nextFreeSuffix(m.variable, claimed);
+        m.variable = nextFreeSuffix(
+          m.variable,
+          claimed,
+          registry.entries[m.testid]?.fingerprint,
+          collisionSuffix
+        );
       }
       claimed.add(m.variable);
     }
   }
 }
 
-function nextFreeSuffix(base: string, claimed: ReadonlySet<string>): string {
+/**
+ * Compute the last-resort suffix when no semantic field could split the
+ * group. `numeric` walks `_2`/`_3`/… and depends on traversal order; `hash`
+ * derives a 4-char fingerprint hash that is stable across runs and indep
+ * of sibling shuffling. Falls back to numeric for any caller that didn't
+ * carry a fingerprint (frozen names without a registry hit, mostly).
+ */
+function nextFreeSuffix(
+  base: string,
+  claimed: ReadonlySet<string>,
+  fingerprint: string | undefined,
+  mode: 'numeric' | 'hash'
+): string {
+  if (mode === 'hash' && fingerprint) {
+    const hash = createHash('sha256').update(fingerprint, 'utf8').digest('hex').slice(0, 4);
+    const candidate = `${base}_${hash}`;
+    if (!claimed.has(candidate)) return candidate;
+    // Hash collision is astronomically unlikely but fall through to numeric
+    // disambiguation rather than throwing.
+  }
   let n = 2;
   let candidate = `${base}_${n}`;
   while (claimed.has(candidate)) {

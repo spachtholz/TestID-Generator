@@ -62,6 +62,14 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       'Print a rename map (basename -> current naming) plus sed snippets and orphan-file list'
     )
     .option('--report-out <path>', 'Write the migration report to a file instead of stdout')
+    .option(
+      '--include-generated-date',
+      'Append the entry\'s last_generated_at date to the # testid-managed comment'
+    )
+    .option(
+      '--collision-suffix <mode>',
+      'Last-resort suffix mode when no semantic discriminator works: numeric (default, _2/_3) or hash (4-char fingerprint hash, stable across runs)'
+    )
     .option('--config <path>', 'Path to testid.config.json')
     .option(
       '--no-overwrite',
@@ -95,6 +103,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     overwrite: boolean;
     lockNames?: boolean;
     regenerateNames?: boolean;
+    includeGeneratedDate?: boolean;
+    collisionSuffix?: string;
     quiet?: boolean;
   }>();
 
@@ -169,6 +179,20 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
   try {
     const lockNames = opts.lockNames ?? locatorsConfig.lockNames;
     const regenerateNames = opts.regenerateNames ?? locatorsConfig.regenerateNames;
+    const includeGeneratedDate =
+      opts.includeGeneratedDate ?? locatorsConfig.includeGeneratedDate;
+    let collisionSuffix: 'numeric' | 'hash' = locatorsConfig.collisionSuffix;
+    if (opts.collisionSuffix !== undefined) {
+      if (opts.collisionSuffix !== 'numeric' && opts.collisionSuffix !== 'hash') {
+        process.stderr.write(
+          pc.red(
+            `[testid-gen-locators] Invalid --collision-suffix "${opts.collisionSuffix}". Valid: numeric, hash.\n`
+          )
+        );
+        return 2;
+      }
+      collisionSuffix = opts.collisionSuffix;
+    }
     const result = await generateLocators(registry, {
       outDir: opts.outDir,
       registryPath,
@@ -178,6 +202,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       variableFormat: opts.variableFormat ?? locatorsConfig.variableFormat,
       lockNames,
       regenerateNames,
+      includeGeneratedDate,
+      collisionSuffix,
       componentNaming,
       migrationReport: opts.migrationReport === true || opts.reportOut !== undefined
     });
