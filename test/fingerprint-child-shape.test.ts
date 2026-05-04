@@ -17,7 +17,7 @@ function findAll(html: string, tag: string): { hits: VisitedElement[]; rootNodes
 }
 
 describe('child_shape fingerprint field', () => {
-  it('captures the tag sequence of immediate children', () => {
+  it('captures the tag sequence of immediate children with no extractable keys', () => {
     const { hits, rootNodes } = findAll(
       `<div><span></span><button></button></div>`,
       'div'
@@ -25,6 +25,33 @@ describe('child_shape fingerprint field', () => {
     const fp = generateFingerprint(hits[0]!, { rootNodes });
     expect(fp.semantic.child_shape).toEqual(['span', 'button']);
     expect(fp.fingerprint).toContain('child_shape=span-button');
+  });
+
+  it('annotates each child with its shallow primary key when present', () => {
+    const { hits, rootNodes } = findAll(
+      `<div class="card">
+         <h3>Adresse</h3>
+         <p>Hauptstr 12</p>
+       </div>`,
+      'div'
+    );
+    const fp = generateFingerprint(hits[0]!, { rootNodes });
+    expect(fp.semantic.child_shape).toEqual(['h3:adresse', 'p:hauptstr-12']);
+  });
+
+  it('separates two card wrappers whose only difference is the heading text', () => {
+    const { hits, rootNodes } = findAll(
+      `<section>
+         <div class="card"><h3>Adresse</h3><p>x</p></div>
+         <div class="card"><h3>Zahlung</h3><p>x</p></div>
+       </section>`,
+      'div'
+    );
+    const a = generateFingerprint(hits[0]!, { rootNodes });
+    const b = generateFingerprint(hits[1]!, { rootNodes });
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+    expect(a.semantic.child_shape).toEqual(['h3:adresse', 'p:x']);
+    expect(b.semantic.child_shape).toEqual(['h3:zahlung', 'p:x']);
   });
 
   it('separates two structurally-identical wrappers around different content', () => {
@@ -38,8 +65,8 @@ describe('child_shape fingerprint field', () => {
     const a = generateFingerprint(hits[0]!, { rootNodes });
     const b = generateFingerprint(hits[1]!, { rootNodes });
     expect(a.fingerprint).not.toBe(b.fingerprint);
-    expect(a.semantic.child_shape).toEqual(['button']);
-    expect(b.semantic.child_shape).toEqual(['input']);
+    expect(a.semantic.child_shape).toEqual(['button:a']);
+    expect(b.semantic.child_shape).toEqual(['input:text']);
   });
 
   it('preserves child order (icon-then-label vs label-then-icon)', () => {
@@ -52,9 +79,38 @@ describe('child_shape fingerprint field', () => {
     );
     const a = generateFingerprint(hits[0]!, { rootNodes });
     const b = generateFingerprint(hits[1]!, { rootNodes });
-    expect(a.semantic.child_shape).toEqual(['i', 'span']);
-    expect(b.semantic.child_shape).toEqual(['span', 'i']);
+    expect(a.semantic.child_shape).toEqual(['i', 'span:x']);
+    expect(b.semantic.child_shape).toEqual(['span:x', 'i']);
     expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+
+  it('falls back to bare tag when the child has nothing identifying', () => {
+    const { hits, rootNodes } = findAll(
+      `<div><div></div><div></div></div>`,
+      'div'
+    );
+    const fp = generateFingerprint(hits[0]!, { rootNodes });
+    expect(fp.semantic.child_shape).toEqual(['div', 'div']);
+  });
+
+  it('does not recurse: identifying text below depth 1 is not captured', () => {
+    // h3 lives at depth 2, the wrapping <div class="header"> at depth 1 has
+    // no own identifier, so the outer div sees only ["div"] for that branch.
+    const { hits, rootNodes } = findAll(
+      `<div class="card"><div class="header"><h3>Adresse</h3></div></div>`,
+      'div'
+    );
+    const outer = generateFingerprint(hits[0]!, { rootNodes });
+    expect(outer.semantic.child_shape).toEqual(['div']);
+  });
+
+  it('normalizes German umlauts and ß in child keys', () => {
+    const { hits, rootNodes } = findAll(
+      `<div><h3>Größe</h3></div>`,
+      'div'
+    );
+    const fp = generateFingerprint(hits[0]!, { rootNodes });
+    expect(fp.semantic.child_shape).toEqual(['h3:groesse']);
   });
 
   it('only fills the {key} slot when no higher-priority semantic field exists', () => {

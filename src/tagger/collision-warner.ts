@@ -3,7 +3,10 @@
 // identical fingerprint. In both cases the duplicate elements end up with the
 // same testid - functional, but worth surfacing.
 
-export type CollisionReason = 'no-hash-placeholder' | 'identical-fingerprint';
+export type CollisionReason =
+  | 'no-hash-placeholder'
+  | 'identical-fingerprint'
+  | 'collision-group-size-changed';
 
 export interface CollisionWarning {
   /** Component-relative path passed in by the tagger. */
@@ -23,6 +26,14 @@ export interface CollisionWarning {
   fingerprint: string;
   /** Snapshot of all extracted semantic data — used by the diagnostic dump. */
   semantic?: Record<string, unknown>;
+  /**
+   * For 'collision-group-size-changed' only: how the group's member count
+   * differs from the previous registry. Tells the user whether the surviving
+   * mapping might have shifted identity and against which slot count to
+   * verify their tests.
+   */
+  previousGroupSize?: number;
+  currentGroupSize?: number;
 }
 
 export interface FormatOptions {
@@ -49,9 +60,7 @@ export function formatCollisionWarnings(
 
   const shown = warnings.slice(0, limit);
   for (const w of shown) {
-    const why = w.reason === 'no-hash-placeholder'
-      ? `idFormat has no {hash}/{hash:-} slot`
-      : `identical fingerprint`;
+    const why = formatReason(w);
     lines.push(
       `  - ${w.componentPath}:${w.line}:${w.column}  <${w.tag}> id="${w.id}"  (${why})`
     );
@@ -60,4 +69,15 @@ export function formatCollisionWarnings(
     lines.push(`  ... and ${warnings.length - shown.length} more`);
   }
   return lines.join('\n') + '\n';
+}
+
+function formatReason(w: CollisionWarning): string {
+  switch (w.reason) {
+    case 'no-hash-placeholder':
+      return 'idFormat has no {hash}/{hash:-} slot';
+    case 'identical-fingerprint':
+      return 'identical fingerprint';
+    case 'collision-group-size-changed':
+      return `collision group size changed (${w.previousGroupSize ?? '?'} -> ${w.currentGroupSize ?? '?'}); surviving mapping is heuristic`;
+  }
 }

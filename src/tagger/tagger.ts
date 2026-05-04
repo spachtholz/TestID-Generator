@@ -179,16 +179,24 @@ export async function runTagger(
     config.componentNaming
   );
 
+  // Index previous registry entries by their owning component path so each
+  // template-tagging call only sees the slice relevant to itself. Without
+  // this filter, the registry-aware sibling-index resolver would have to
+  // scan the whole registry per template and could match cross-component.
+  const previousEntriesByComponent = indexPreviousEntriesByComponent(previous);
+
   for (let i = 0; i < files.length; i++) {
     const file = files[i]!;
     const original = await fs.readFile(file, 'utf8');
     const relFromCwd = path.relative(cwd, file);
     const relFromRoot = path.relative(rootDir, file);
+    const componentKey = relFromCwd.replace(/\\/g, '/');
     const result = tagTemplateSource(original, {
       componentName: componentNameMap.get(file) ?? componentNameFromPath(file),
       componentPath: relFromCwd,
       hashLength: config.hashLength,
-      config
+      config,
+      previousEntries: previousEntriesByComponent.get(componentKey)
     });
 
     collisions += result.collisions;
@@ -362,6 +370,33 @@ async function resolveTemplateFiles(args: {
   return files;
 }
 
+/**
+ * Group previous-registry entries by their owning component-path so the
+ * tagger can pass each template only the slice it cares about.
+ *
+ * Entries without a `component` field (legacy registries) are dropped — the
+ * worst case is that the registry-aware resolver falls back to source-position
+ * ordering for those, which is the pre-feature behaviour anyway.
+ */
+function indexPreviousEntriesByComponent(
+  previous: Registry | null
+): Map<string, Record<string, RegistryEntry>> {
+  const out = new Map<string, Record<string, RegistryEntry>>();
+  if (!previous?.entries) return out;
+  for (const [id, entry] of Object.entries(previous.entries)) {
+    const comp = entry.component;
+    if (!comp) continue;
+    const key = comp.replace(/\\/g, '/');
+    let bucket = out.get(key);
+    if (!bucket) {
+      bucket = {};
+      out.set(key, bucket);
+    }
+    bucket[id] = entry;
+  }
+  return out;
+}
+
 function emptyResult(dryRun: boolean): TaggerRunResult {
   return {
     version: 0,
@@ -414,6 +449,15 @@ export interface TagTemplateOptions {
   componentPath: string;
   hashLength: number;
   config: TaggerConfig;
+  /**
+   * Subset of the previous-version registry entries belonging to this
+   * component. Consulted by the sibling-index collision resolver to keep
+   * `--N` slot assignments stable across re-runs even when the source has
+   * no testid attribute to anchor on. Empty / omitted ⇒ falls back to
+   * pure source-position ordering (the legacy behaviour for first-time
+   * tagging or for runs without a prior registry).
+   */
+  previousEntries?: Record<string, RegistryEntry>;
 }
 
 export interface TagTemplateResult {
@@ -503,7 +547,8 @@ export function tagTemplateSource(
     componentName: options.componentName,
     componentPath: options.componentPath,
     hashLength: options.hashLength,
-    collisionWarnings
+    collisionWarnings,
+    previousSlotMap: buildPreviousSlotMap(options.previousEntries)
   });
 
   // Build registry entries (sorted later by the writer). FR-1.3: keep existing IDs.
@@ -768,6 +813,56 @@ function buildSemanticForRegistry(
 }
 
 /**
+ * One previous-registry entry that occupies a `--N` slot in a bare-id family.
+ * Built up front per-component so the sibling-index resolver can keep slot
+ * assignments stable across re-runs even when the source carries no testid
+ * attribute to anchor on.
+ */
+interface PreviousSlot {
+  /** Fully-qualified id as seen in the previous registry (`save--1`). */
+  id: string;
+  /** Fingerprint used to match against current candidates. */
+  fingerprint: string;
+  /** Numeric value of the `disambiguator.value` field. */
+  disambiguatorValue: number;
+}
+
+/**
+ * Index a component's previous-registry entries by their bare id (the
+ * disambiguator-stripped form). Only entries with a `sibling-index`-kind
+ * disambiguator end up here — `hash`-suffixed ids and singletons have nothing
+ * to anchor on for slot reuse and are left to the per-strategy default.
+ *
+ * Lists are sorted by ascending `disambiguatorValue` so the resolver's greedy
+ * "lowest unclaimed slot" pass produces stable, deterministic output.
+ */
+function buildPreviousSlotMap(
+  previousEntries: Record<string, RegistryEntry> | undefined
+): Map<string, PreviousSlot[]> {
+  const out = new Map<string, PreviousSlot[]>();
+  if (!previousEntries) return out;
+  for (const [id, entry] of Object.entries(previousEntries)) {
+    const dis = entry.disambiguator;
+    if (!dis || dis.kind !== 'sibling-index') continue;
+    const suffix = `--${dis.value}`;
+    if (!id.endsWith(suffix)) continue;
+    const bareId = id.slice(0, -suffix.length);
+    const value = Number(dis.value);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    let list = out.get(bareId);
+    if (!list) {
+      list = [];
+      out.set(bareId, list);
+    }
+    list.push({ id, fingerprint: entry.fingerprint, disambiguatorValue: value });
+  }
+  for (const list of out.values()) {
+    list.sort((a, b) => a.disambiguatorValue - b.disambiguatorValue);
+  }
+  return out;
+}
+
+/**
  * Resolve every candidate's final id, applying the configured collision
  * strategy. Mutates each candidate's `id`, `source` and `disambiguator`
  * in place; returns the count of collisions seen for the run-level metric.
@@ -775,8 +870,12 @@ function buildSemanticForRegistry(
  * Strategies:
  * - 'error'         — throw on first collision.
  * - 'hash-suffix'   — re-render with `{hash}` filled in.
- * - 'sibling-index' — sort the colliding group by source position, assign
- *                     `--1`, `--2`, … via the `{disambiguator}` slot.
+ * - 'sibling-index' — assign `--1`, `--2`, … via the `{disambiguator}` slot.
+ *                     Registry-aware: when the previous registry contains
+ *                     fingerprint-matching slots for this bare-id family,
+ *                     each match keeps its old slot value; new candidates
+ *                     pick the next free slot. When no previous registry is
+ *                     available, falls back to source-position ordering.
  * - 'auto'          — try sibling-index first (readable), fall back to hash
  *                     if the format has no disambiguator slot, and finally
  *                     warn if nothing helped.
@@ -788,8 +887,9 @@ function assignCandidateIds(args: {
   componentPath: string;
   hashLength: number;
   collisionWarnings: CollisionWarning[];
+  previousSlotMap: Map<string, PreviousSlot[]>;
 }): number {
-  const { candidates, config, componentName, componentPath, hashLength, collisionWarnings } = args;
+  const { candidates, config, componentName, componentPath, hashLength, collisionWarnings, previousSlotMap } = args;
 
   // Pre-compute the bare ("would-generate") id for every candidate so we know
   // who collides with whom up front. This lets sibling-index assign suffixes
@@ -839,6 +939,27 @@ function assignCandidateIds(args: {
     // assignment is stable across re-runs (same source → same suffix).
     indices.sort((a, b) => candidates[a]!.sortKey - candidates[b]!.sortKey);
 
+    // Surface "the bare-id family used to be a collision group, now it
+    // isn't" so the user can verify their tests against the surviving
+    // slot. Same heuristic-mapping risk as a multi→multi shrink.
+    const previousSlotsForBare = previousSlotMap.get(bare) ?? [];
+    if (indices.length === 1 && previousSlotsForBare.length > 1) {
+      const c = candidates[indices[0]!]!;
+      const span = c.element.startSourceSpan;
+      collisionWarnings.push({
+        componentPath: componentPath.replace(/\\/g, '/'),
+        line: span?.start.line != null ? span.start.line + 1 : 0,
+        column: span?.start.col != null ? span.start.col + 1 : 0,
+        id: bare,
+        tag: c.detected.tag,
+        reason: 'collision-group-size-changed',
+        fingerprint: c.fingerprint.fingerprint,
+        semantic: c.fingerprint.semantic as unknown as Record<string, unknown>,
+        previousGroupSize: previousSlotsForBare.length,
+        currentGroupSize: 1
+      });
+    }
+
     if (indices.length === 1) {
       // Singleton group — assign the bare id directly. No disambiguator
       // needed; the existing-id check below tells generated vs. manual.
@@ -876,8 +997,33 @@ function assignCandidateIds(args: {
         config,
         componentName,
         hashLength,
-        formatHasDisambiguatorSlot
+        formatHasDisambiguatorSlot,
+        previousSlots: previousSlotsForBare
       });
+
+      // Group changed size compared to the previous registry → surviving
+      // mapping for byte-identical members can shift identity. Surface it
+      // once per group so the user can verify tests rather than discover
+      // breakage later.
+      if (
+        previousSlotsForBare.length > 0 &&
+        previousSlotsForBare.length !== indices.length
+      ) {
+        const c = candidates[indices[0]!]!;
+        const span = c.element.startSourceSpan;
+        collisionWarnings.push({
+          componentPath: componentPath.replace(/\\/g, '/'),
+          line: span?.start.line != null ? span.start.line + 1 : 0,
+          column: span?.start.col != null ? span.start.col + 1 : 0,
+          id: bare,
+          tag: c.detected.tag,
+          reason: 'collision-group-size-changed',
+          fingerprint: c.fingerprint.fingerprint,
+          semantic: c.fingerprint.semantic as unknown as Record<string, unknown>,
+          previousGroupSize: previousSlotsForBare.length,
+          currentGroupSize: indices.length
+        });
+      }
     }
 
     if (assignment === null && (config.collisionStrategy === 'hash-suffix' || config.collisionStrategy === 'auto')) {
@@ -981,17 +1127,97 @@ interface AssignmentEntry {
  * `{disambiguator}` slot in `idFormat`. When the format has no disambiguator
  * slot, append `--N` to the bare id directly. Returns null only when the
  * group is empty (real impossibility); always otherwise returns N entries.
+ *
+ * Algorithm (registry-aware when `previousSlots` is non-empty):
+ *
+ *   1. **Lock** every already-tagged candidate to the numeric suffix parsed
+ *      out of its existing testid (`save--3` → 3). Source-anchored ids win
+ *      over any registry hint.
+ *   2. **Reuse** previous-registry slots: walk candidates in source order;
+ *      for each unlocked candidate, claim the lowest unclaimed slot whose
+ *      stored fingerprint matches the candidate's current fingerprint.
+ *   3. **Fill** the remainder: candidates that found no fingerprint match
+ *      (genuinely new members or fingerprint-edited ones) get the next free
+ *      numeric value, skipping anything already claimed.
+ *
+ * For byte-identical insertion the heuristic preserves stability when the
+ * new element is added at the END (the existing slots match the leading
+ * candidates 1:1, the trailing newcomer takes the next free value). For
+ * insertion at the FRONT or MIDDLE of a byte-identical group, the mapping
+ * is informationally underdetermined — the caller surfaces a
+ * `collision-group-size-changed` warning so the user can verify.
  */
 function computeSiblingIndexAssignment(
-  args: ComputeArgs & { bareIds: readonly string[]; formatHasDisambiguatorSlot: boolean }
+  args: ComputeArgs & {
+    bareIds: readonly string[];
+    formatHasDisambiguatorSlot: boolean;
+    previousSlots: readonly PreviousSlot[];
+  }
 ): AssignmentEntry[] | null {
-  const { indices, candidates, bareIds, config, componentName, hashLength, formatHasDisambiguatorSlot } = args;
+  const {
+    indices, candidates, bareIds, config, componentName, hashLength,
+    formatHasDisambiguatorSlot, previousSlots
+  } = args;
   if (indices.length === 0) return null;
 
+  // Phase 1: lock candidates whose source attribute already pins a slot.
+  const claimedValues = new Set<number>();
+  const lockedAssignments = new Map<number, number>();
+  for (const i of indices) {
+    const c = candidates[i]!;
+    if (!c.alreadyTagged || !c.existingId) continue;
+    const m = c.existingId.match(/--(\d+)$/);
+    if (!m) continue;
+    const v = Number(m[1]);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    lockedAssignments.set(i, v);
+    claimedValues.add(v);
+  }
+
+  // Phase 2 setup: any previous slot whose value collides with a locked
+  // existing-id is pre-claimed (so we don't hand it out to a different
+  // unlocked candidate later).
+  const claimedPreviousIdx = new Set<number>();
+  for (let s = 0; s < previousSlots.length; s++) {
+    if (claimedValues.has(previousSlots[s]!.disambiguatorValue)) {
+      claimedPreviousIdx.add(s);
+    }
+  }
+
+  // Phase 2 + 3: walk candidates in source order, prefer fingerprint-matched
+  // previous slots, fall back to next-free.
+  const assignmentValue = new Map<number, number>();
+  for (const idx of indices) {
+    if (lockedAssignments.has(idx)) {
+      assignmentValue.set(idx, lockedAssignments.get(idx)!);
+      continue;
+    }
+    const candFp = candidates[idx]!.fingerprint.fingerprint;
+
+    let value = -1;
+    for (let s = 0; s < previousSlots.length; s++) {
+      if (claimedPreviousIdx.has(s)) continue;
+      if (previousSlots[s]!.fingerprint !== candFp) continue;
+      claimedPreviousIdx.add(s);
+      value = previousSlots[s]!.disambiguatorValue;
+      break;
+    }
+    if (value < 0) {
+      let next = 1;
+      while (claimedValues.has(next)) next++;
+      value = next;
+    }
+    claimedValues.add(value);
+    assignmentValue.set(idx, value);
+  }
+
+  // Phase 4: render ids using the resolved values.
   const out: AssignmentEntry[] = [];
   for (let n = 0; n < indices.length; n++) {
-    const c = candidates[indices[n]!]!;
-    const value = String(n + 1);
+    const idx = indices[n]!;
+    const c = candidates[idx]!;
+    const value = assignmentValue.get(idx)!;
+    const valueStr = String(value);
     const id = formatHasDisambiguatorSlot
       ? generateId({
           componentName,
@@ -1003,10 +1229,10 @@ function computeSiblingIndexAssignment(
           hashLength,
           hashAlgorithm: config.hashAlgorithm,
           idFormat: config.idFormat,
-          disambiguator: value
+          disambiguator: valueStr
         })
-      : `${bareIds[indices[n]!]!}--${value}`;
-    out.push({ id, disambiguator: { kind: 'sibling-index', value } });
+      : `${bareIds[idx]!}--${valueStr}`;
+    out.push({ id, disambiguator: { kind: 'sibling-index', value: valueStr } });
   }
   return out;
 }

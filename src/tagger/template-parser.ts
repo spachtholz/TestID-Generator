@@ -342,20 +342,98 @@ export function getTagName(element: VisitedElement): string {
  * ---------------------------------------------------------------------- */
 
 /**
- * Tag names of the element's direct element-like children, in source order.
- * Two structurally identical wrappers around different content (e.g. one
- * containing `<button>` and one containing `<input>`) get different shape
- * lists and stop colliding on the fingerprint.
+ * Tag names of the element's direct element-like children, in source order,
+ * each annotated with the child's shallow primary identifier when one can be
+ * extracted (`h3:adresse`, `p:hauptstr`, otherwise just `div`). Two
+ * structurally-identical wrapper containers around different content stop
+ * colliding on the fingerprint because their children carry different keys.
  *
  * Order is preserved (not sorted): an icon-then-label row is structurally
- * different from a label-then-icon row even when both children are the same
- * tags.
+ * different from a label-then-icon row even when both children share tags.
+ *
+ * Extraction is shallow by design: only the child's own attributes and its
+ * direct static text are inspected, never grandchildren. That keeps the cost
+ * O(direct children) and avoids cascading drift when something deeper in the
+ * subtree changes.
  */
 export function getChildShape(element: VisitedElement): string[] {
   const out: string[] = [];
   for (const child of element.children ?? []) {
-    if (isElementLike(child)) {
-      out.push(getTagName(child).toLowerCase());
+    if (!isElementLike(child)) continue;
+    const tag = getTagName(child).toLowerCase();
+    const key = extractShallowChildKey(child);
+    out.push(key ? `${tag}:${key}` : tag);
+  }
+  return out;
+}
+
+/**
+ * Cheap statically-extractable identifier for a child element. Mirrors the
+ * fingerprint priority list but is restricted to fields that need no parent
+ * walk and no expression evaluation. Returns `null` when the child carries
+ * nothing identifying (in which case `getChildShape` falls back to the bare
+ * tag name).
+ */
+function extractShallowChildKey(element: VisitedElement): string | null {
+  const candidates: ReadonlyArray<string | undefined | null> = [
+    findAttribute(element, 'formcontrolname')?.value,
+    findAttribute(element, 'name')?.value,
+    findAttribute(element, 'aria-label')?.value,
+    findAttribute(element, 'label')?.value,
+    findAttribute(element, 'placeholder')?.value,
+    findAttribute(element, 'routerlink')?.value,
+    findAttribute(element, 'title')?.value,
+    findAttribute(element, 'href')?.value,
+    findAttribute(element, 'alt')?.value,
+    getStaticTextContent(element),
+    findAttribute(element, 'value')?.value,
+    findAttribute(element, 'type')?.value,
+    findAttribute(element, 'role')?.value,
+    findAttribute(element, 'id')?.value
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    const trimmed = c.replace(/\s+/g, ' ').trim();
+    if (trimmed.length === 0) continue;
+    return slugifyChildKey(trimmed);
+  }
+  return null;
+}
+
+/**
+ * Tight ASCII slugifier used only for embedding child-key text into the
+ * `child_shape` entries. Lowercases A-Z, normalizes German umlauts + ß,
+ * collapses runs of non-alphanum to single `-`, trims leading/trailing dashes.
+ *
+ * Stays self-contained (no util import) so template-parser keeps its narrow
+ * dependency surface.
+ */
+function slugifyChildKey(value: string): string {
+  let mapped = '';
+  for (const ch of value) {
+    switch (ch) {
+      case 'ä': mapped += 'ae'; continue;
+      case 'ö': mapped += 'oe'; continue;
+      case 'ü': mapped += 'ue'; continue;
+      case 'Ä': mapped += 'Ae'; continue;
+      case 'Ö': mapped += 'Oe'; continue;
+      case 'Ü': mapped += 'Ue'; continue;
+      case 'ß': mapped += 'ss'; continue;
+    }
+    mapped += ch.normalize('NFD').replace(/\p{M}/gu, '');
+  }
+  let out = '';
+  let pendingDash = false;
+  for (let i = 0; i < mapped.length; i++) {
+    const code = mapped.charCodeAt(i);
+    const isLowerAlphaNum = (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+    const isUpperAlpha = code >= 65 && code <= 90;
+    if (isLowerAlphaNum || isUpperAlpha) {
+      if (pendingDash && out.length > 0) out += '-';
+      out += isUpperAlpha ? String.fromCharCode(code + 32) : mapped[i];
+      pendingDash = false;
+    } else {
+      pendingDash = true;
     }
   }
   return out;
