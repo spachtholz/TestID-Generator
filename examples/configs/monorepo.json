@@ -1,0 +1,36 @@
+{
+  "_comment": "Monorepo-friendly setup. Templates live under apps/{name}/... or libs/{name}/..., several apps share basenames (`dialog.component.html` exists multiple times), and reusable UI components like <custom-dropdown> are placed in many parent contexts. componentNaming='disambiguate' makes the resulting testids globally unique by prefixing the colliding paths' uncommon segment; collisionStrategy='auto' resolves intra-template collisions with readable --1/--2 sibling-index suffixes; lockNames freezes Robot variables once written so tests don't need re-syncing on every refactor.",
+  "tagger": {
+    "rootDir": ".",
+    "include": [
+      "apps/**/*.component.html",
+      "libs/**/*.component.html"
+    ],
+    "ignore": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.angular/**"
+    ],
+    "registryDir": "test-artifacts/testids",
+    "attributeName": "data-testid",
+    "idFormat": "{component}__{element}--{key}{disambiguator:--}{hash:-}",
+    "componentNaming": "disambiguate",
+    "collisionStrategy": "auto",
+    "testConfigurationOnly": false,
+    "writeActivityLog": true,
+    "writeBackups": true,
+    "registry": {
+      "profile": "full"
+    }
+  },
+  "differ": {
+    "outputFormats": ["md", "json"],
+    "showRegenerated": true
+  },
+  "locators": {
+    "variableFormat": "{component}_{element}_{key}",
+    "componentNaming": "disambiguate",
+    "lockNames": true,
+    "mode": "merge"
+  }
+}

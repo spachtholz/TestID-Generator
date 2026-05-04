@@ -12,7 +12,12 @@ export {
   generateFingerprint,
   snapshotSemantics
 } from './fingerprint-generator.js';
-export type { Fingerprint, SemanticSnapshot, SemanticKey } from './fingerprint-generator.js';
+export type {
+  Fingerprint,
+  SemanticSnapshot,
+  SemanticKey,
+  SnapshotOptions
+} from './fingerprint-generator.js';
 
 export {
   generateId,
@@ -41,9 +46,21 @@ export {
   walkElements,
   findAttribute,
   getTagName,
-  getStaticTextContent
+  getStaticTextContent,
+  getAllStaticAttributes,
+  getBoundIdentifiers,
+  getEventHandlerNames,
+  getInterpolationData,
+  resolveContextAnchors
 } from './template-parser.js';
-export type { ParsedTemplate, ParseOptions, VisitedElement, LoopContext } from './template-parser.js';
+export type {
+  ParsedTemplate,
+  ParseOptions,
+  VisitedElement,
+  LoopContext,
+  ContextAnchors,
+  InterpolationData
+} from './template-parser.js';
 
 export { formatLoopWarnings } from './loop-warner.js';
 export type { LoopWarning } from './loop-warner.js';

@@ -1,5 +1,5 @@
 {
-  "_comment": "Short opaque testids in the HTML, but readable Python variable names in the generated Robot-Framework files. idFormat is pure hash (tid-{hash} always present), variableFormat pulls component + element + key from the registry so tests stay self-documenting.",
+  "_comment": "Short opaque testids in the HTML, but readable Python variable names in the generated Robot-Framework files. idFormat is pure hash (tid-{hash} always present), variableFormat pulls component + element + key from the registry so tests stay self-documenting. Rich semantic input from the extended fingerprint means stable hashes despite cosmetic template edits.",
   "tagger": {
     "rootDir": "src",
     "include": ["**/*.component.html"],
@@ -9,11 +9,14 @@
     "hashLength": 8,
     "alwaysHash": true,
     "collisionStrategy": "error",
+    "componentNaming": "disambiguate",
     "registry": {
-      "profile": "standard"
+      "profile": "full"
     }
   },
   "locators": {
-    "variableFormat": "{component}_{element}_{key}"
+    "variableFormat": "{component}_{element}_{key}",
+    "componentNaming": "disambiguate",
+    "lockNames": true
   }
 }

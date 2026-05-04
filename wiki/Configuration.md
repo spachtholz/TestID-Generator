@@ -39,9 +39,10 @@ All three sections are optional. An empty config resolves to all defaults; only 
 | `attributeName` | `"data-testid"` | The attribute itself - swap in `data-cy` for Cypress. |
 | `hashAlgorithm` | `"sha256"` | `sha256`, `sha1`, or `md5`. |
 | `hashLength` | `6` | Hash-suffix length, 4–16. |
-| `collisionStrategy` | `"hash-suffix"` | `hash-suffix` or `error`. |
-| `idFormat` | `"{component}__{element}--{key}{hash:-}"` | Naming template (see placeholders below). |
+| `collisionStrategy` | `"auto"` | How to disambiguate two elements that produce the same semantic id. See the table below. |
+| `idFormat` | `"{component}__{element}--{key}{disambiguator:--}{hash:-}"` | Naming template (see placeholders below). |
 | `alwaysHash` | `false` | Force `{hash}` / `{hash:-}` to always render, not just on collisions. Use with hash-only `idFormat`s like `"tid-{hash}"`. |
+| `includeUtilityClasses` | `false` | When `true`, Tailwind / utility-shaped class names (`mt-4`, `flex`) can win the readable `{key}` slot. Off by default because semantic class names read better. |
 | `testConfigurationOnly` | `true` | Only run in `--configuration=test`. |
 | `registryRetention` | `0` | Keep only the N most recent `testids.vN.json` (0 = keep all). |
 | `writeActivityLog` | `false` | Emit `activity.v{N}.md` + `.json` per run. |
@@ -59,6 +60,21 @@ All three sections are optional. An empty config resolves to all defaults; only 
 | `{tag}` | `p-dropdown`, `input` |
 | `{hash}` | 6-char hex (empty when no collision) |
 | `{hash:-}` | Same as `{hash}` but prefixed with `-` when non-empty |
+| `{disambiguator}` | Sibling-index value like `2` (empty when no collision) |
+| `{disambiguator:--}` | Same as `{disambiguator}` but prefixed with `--` when non-empty |
+
+### Collision strategies
+
+When two elements produce the same semantic id, the strategy decides how to make them unique.
+
+| Strategy | What it does | When to use |
+|---|---|---|
+| `auto` (default) | Tries the readable sibling-index first (`--1`, `--2`). Falls back to `{hash}` when the format has no slot for the index. | Recommended for new projects. |
+| `sibling-index` | Always assigns `--1`, `--2`, … in source order. | When you want fully readable testids and accept that adding a new colliding sibling can shift the numbering. |
+| `hash-suffix` | Appends the `{hash}` value. The whole colliding group gets a hash suffix. | When you prefer opaque, position-independent ids. |
+| `error` | Throws on the first collision. | When you want the build to fail until the template is fixed. |
+
+The sibling-index value is sorted by the element's position in the source file. Re-runs without source changes always produce the same numbering. The picked value is stored as `disambiguator` on the registry entry so it survives carry-over between runs.
 
 ### `tagger.registry` - field selection
 
@@ -90,7 +106,7 @@ Granular overrides (any of these override the profile default):
 | `includeSource` | boolean | Write the `source` field (`generated` / `manual`) |
 | `includeHistory` | boolean | Write `last_generated_at` + `generation_history` |
 | `includeDynamicChildren` | boolean | Write `dynamic_children` pattern for PrimeNG overlays |
-| `semanticFields` | `string[]` | Restrict which sub-keys of `semantic` are kept. Valid values: `formcontrolname`, `name`, `routerlink`, `aria_label`, `placeholder`, `text_content`, `type`, `role` |
+| `semanticFields` | `string[]` | Restrict which sub-keys of `semantic` are kept. Valid values: `formcontrolname`, `name`, `routerlink`, `aria_label`, `placeholder`, `text_content`, `type`, `role`, `title`, `alt`, `value`, `html_id`, `href`, `src`, `html_for`, `label`, `static_attributes`, `bound_identifiers`, `event_handlers`, `i18n_keys`, `bound_text_paths`, `css_classes`, `child_shape`, `context`, `structural_directives`. |
 
 `full` (default) matches pre-0.4.0 behaviour byte-for-byte. `standard` drops history fields. `minimal` keeps only required schema fields plus `first_seen_version` / `last_seen_version`.
 

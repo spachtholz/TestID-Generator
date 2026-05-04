@@ -14,7 +14,24 @@ export type SemanticFieldName =
   | 'placeholder'
   | 'text_content'
   | 'type'
-  | 'role';
+  | 'role'
+  | 'title'
+  | 'alt'
+  | 'value'
+  | 'html_id'
+  | 'href'
+  | 'src'
+  | 'html_for'
+  | 'label'
+  | 'static_attributes'
+  | 'bound_identifiers'
+  | 'event_handlers'
+  | 'i18n_keys'
+  | 'bound_text_paths'
+  | 'css_classes'
+  | 'child_shape'
+  | 'context'
+  | 'structural_directives';
 
 export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'formcontrolname',
@@ -24,7 +41,24 @@ export const ALL_SEMANTIC_FIELDS: readonly SemanticFieldName[] = [
   'placeholder',
   'text_content',
   'type',
-  'role'
+  'role',
+  'title',
+  'alt',
+  'value',
+  'html_id',
+  'href',
+  'src',
+  'html_for',
+  'label',
+  'static_attributes',
+  'bound_identifiers',
+  'event_handlers',
+  'i18n_keys',
+  'bound_text_paths',
+  'css_classes',
+  'child_shape',
+  'context',
+  'structural_directives'
 ];
 
 /** Matches the Zod schema in tagger/config-loader.ts. */
@@ -58,7 +92,21 @@ const PROFILE_DEFAULTS: Record<RegistryProfile, ResolvedRegistryOptions> = {
     includeSource: true,
     includeHistory: false,
     includeDynamicChildren: true,
-    semanticFields: ['formcontrolname', 'aria_label', 'placeholder', 'text_content']
+    semanticFields: [
+      'formcontrolname',
+      'aria_label',
+      'placeholder',
+      'text_content',
+      'title',
+      'label',
+      'html_id',
+      'event_handlers',
+      'i18n_keys',
+      'css_classes',
+      'child_shape',
+      'context',
+      'structural_directives'
+    ]
   },
   full: {
     includeSemantics: true,
@@ -123,6 +171,12 @@ function filterEntry(
   if (entry.locator_name !== undefined) {
     out.locator_name = entry.locator_name;
   }
+  // disambiguator is collision-resolution state. Preserving it across writes
+  // lets the next tagger run reuse the same suffix-N for the same logical
+  // element, keeping testids stable when siblings are added/removed.
+  if (entry.disambiguator !== undefined) {
+    out.disambiguator = entry.disambiguator;
+  }
   if (options.includeHistory) {
     if (entry.last_generated_at !== undefined) out.last_generated_at = entry.last_generated_at;
     if (entry.generation_history !== undefined) out.generation_history = entry.generation_history;
@@ -131,22 +185,43 @@ function filterEntry(
   return out;
 }
 
+const TIER0_DEFAULTS: SemanticAttributes = {
+  formcontrolname: null,
+  aria_label: null,
+  placeholder: null,
+  text_content: null,
+  type: null
+};
+
 function filterSemantic(
   semantic: SemanticAttributes,
   keep: readonly SemanticFieldName[]
 ): SemanticAttributes {
-  const out: SemanticAttributes = {
-    formcontrolname: null,
-    aria_label: null,
-    placeholder: null,
-    text_content: null,
-    type: null
-  };
+  // Build the filtered output as a loose record so we don't have to fight the
+  // SemanticAttributes index signature for every value class. The cast at the
+  // return is safe because every key fed into `out` is a real semantic field
+  // name and every value type matches what the registry serializer expects.
+  const out: Record<string, unknown> = { ...TIER0_DEFAULTS };
   for (const key of keep) {
-    const value = semantic[key];
-    if (value !== undefined) {
-      out[key] = value ?? null;
+    const value = (semantic as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    // Treat empty containers as "absent" so the JSON stays compact.
+    if (value !== null && typeof value === 'object') {
+      if (Array.isArray(value)) {
+        if (value.length === 0) continue;
+        out[key] = value;
+      } else {
+        if (isEmptyObject(value as object)) continue;
+        out[key] = value;
+      }
+    } else {
+      out[key] = value;
     }
   }
-  return out;
+  return out as SemanticAttributes;
+}
+
+function isEmptyObject(value: object): boolean {
+  for (const _ in value) return false;
+  return true;
 }

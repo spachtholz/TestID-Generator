@@ -80,8 +80,26 @@ export const TaggerConfigSchema = z.object({
   /** attribute name written into the templates (data-testid, data-cy, ...) */
   attributeName: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_-]*$/).default('data-testid'),
   hashAlgorithm: z.enum(['sha256', 'sha1', 'md5']).default('sha256'),
-  /** hash-suffix = append disambiguator on collision; error = throw */
-  collisionStrategy: z.enum(['hash-suffix', 'error']).default('hash-suffix'),
+  /**
+   * How to disambiguate two elements that produce the same semantic id.
+   * - 'auto'          — try sibling-index first (`--1`/`--2`, readable),
+   *                     fall back to hash if the format has no slot for it.
+   *                     Recommended default for new projects.
+   * - 'sibling-index' — always use the in-source sibling index `--N`. Stable
+   *                     across re-runs but reshuffles when colliding siblings
+   *                     are added/removed.
+   * - 'hash-suffix'   — append `{hash}` to make it unique. Old behaviour.
+   * - 'error'         — throw on the first collision.
+   */
+  collisionStrategy: z
+    .enum(['auto', 'sibling-index', 'hash-suffix', 'error'])
+    .default('auto'),
+  /**
+   * When true, Tailwind / utility-shaped class names are eligible to drive
+   * the readable `{key}` segment of the testid. Off by default because
+   * `mt-4` reads worse than the underlying tag name.
+   */
+  includeUtilityClasses: z.boolean().default(false),
   /** keep only N newest versioned files; 0 = keep all */
   registryRetention: z.number().int().min(0).default(0),
   /** file naming for versioned registry snapshots: 'version' = testids.v{N}.json, 'timestamp' = testids.{iso-no-colons}.json */
@@ -104,10 +122,28 @@ export const TaggerConfigSchema = z.object({
       })
     )
     .default({}),
-  /** placeholders: {component}, {element}, {key}, {tag}, {hash}, {hash:-} */
-  idFormat: z.string().min(1).default('{component}__{element}--{key}{hash:-}'),
+  /**
+   * placeholders: {component}, {element}, {key}, {tag}, {hash}, {hash:-},
+   * {disambiguator}, {disambiguator:--}. The `:--` variants render as the
+   * separator-prefixed value (e.g. `--a3f9`, `--2`) when non-empty and as an
+   * empty string otherwise.
+   */
+  idFormat: z
+    .string()
+    .min(1)
+    .default('{component}__{element}--{key}{disambiguator:--}{hash:-}'),
   /** force {hash} to always render, not just on collisions */
   alwaysHash: z.boolean().default(false),
+  /**
+   * How to derive the `{component}` slug when several templates share a basename.
+   * - 'basename'      — use the basename as-is (legacy behavior, may collide)
+   * - 'basename-strict' — fail loudly when basenames collide
+   * - 'disambiguate'  — prefix the colliding paths' uncommon segments
+   *                     (`apps/admin/dialog.component.html` → `admin-dialog`)
+   */
+  componentNaming: z
+    .enum(['basename', 'basename-strict', 'disambiguate'])
+    .default('basename'),
   // TODO: ontology export profile once feature/owl-export lands back
   registry: z
     .object({
@@ -126,7 +162,24 @@ export const TaggerConfigSchema = z.object({
             'placeholder',
             'text_content',
             'type',
-            'role'
+            'role',
+            'title',
+            'alt',
+            'value',
+            'html_id',
+            'href',
+            'src',
+            'html_for',
+            'label',
+            'static_attributes',
+            'bound_identifiers',
+            'event_handlers',
+            'i18n_keys',
+            'bound_text_paths',
+            'css_classes',
+            'child_shape',
+            'context',
+            'structural_directives'
           ])
         )
         .optional()

@@ -26,7 +26,18 @@ Each entry records a `source` (`generated` or `manual`) and a `last_generated_at
 
 ## Configurable ID format
 
-The `idFormat` template accepts the placeholders `{component}`, `{element}`, `{key}`, `{tag}`, `{hash}`, and `{hash:-}`. The target attribute name (`data-testid`, `data-cy`, …) and hash algorithm (`sha256`, `sha1`, `md5`) are also configurable.
+The `idFormat` template accepts the placeholders `{component}`, `{element}`, `{key}`, `{tag}`, `{hash}`, `{hash:-}`, `{disambiguator}`, and `{disambiguator:--}`. The target attribute name (`data-testid`, `data-cy`, …) and hash algorithm (`sha256`, `sha1`, `md5`) are also configurable. The `:--` and `:-` variants render the value with a `--` or `-` prefix when set, and as an empty string otherwise — handy for slots that should disappear when no collision needs disambiguating.
+
+## Collision strategies
+
+Two elements that share the same semantic fingerprint would otherwise produce the same testid. The `collisionStrategy` setting decides how to make them unique:
+
+- `auto` (default) — assigns readable suffixes like `--1`, `--2`, `--3` based on the source order of the elements. Falls back to a hash suffix if the format has no slot for the index.
+- `sibling-index` — always uses the readable `--N` suffix.
+- `hash-suffix` — appends the fingerprint hash to every member of the colliding group.
+- `error` — fails the run on the first collision so a human has to add a distinguishing attribute.
+
+The chosen suffix is stored on the registry entry, so re-runs without source changes always produce the same ids.
 
 ## Rollback
 

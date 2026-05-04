@@ -1,6 +1,29 @@
 // Registry schema types (FR-2.1). Also exported as JSON schema in ./json-schema.ts.
 
+/**
+ * Surrounding-context anchors collected by walking up from an element. Used
+ * primarily to disambiguate reusable components (`<custom-dropdown>`) when
+ * the element itself carries no distinguishing attributes — the wrapping
+ * `<label>`, `<legend>`, `<h*>` or wrapper-component `label`-input becomes
+ * the semantic key.
+ */
+export interface ContextAttributes {
+  /** Text of a `<label for="thisElementId">` matched via static `id`. */
+  label_for: string | null;
+  /** `label`/`title`/`header`/`caption` input on a wrapping component. */
+  wrapper_label: string | null;
+  /** `<legend>` of the nearest enclosing `<fieldset>`. */
+  fieldset_legend: string | null;
+  /** Nearest preceding `<h1>`-`<h6>` in the same parent or section. */
+  preceding_heading: string | null;
+  /** `formControlName` carried on a wrapping element/component. */
+  wrapper_formcontrolname: string | null;
+  /** Resolved text of the element referenced by `aria-labelledby`. */
+  aria_labelledby_text: string | null;
+}
+
 export interface SemanticAttributes {
+  // Core semantic attributes carried by the element itself.
   formcontrolname: string | null;
   name?: string | null;
   routerlink?: string | null;
@@ -10,8 +33,53 @@ export interface SemanticAttributes {
   text_content: string | null;
   type: string | null;
   role?: string | null;
+
+  // Universal HTML attributes captured as first-class fields.
+  title?: string | null;
+  alt?: string | null;
+  value?: string | null;
+  html_id?: string | null;
+  href?: string | null;
+  src?: string | null;
+  /** `<label for>` value (the `for` keyword is reserved in TS). */
+  html_for?: string | null;
+  /** `<input>`/`<button>`-style component label input as static attribute. */
+  label?: string | null;
+
+  /** Any other static attribute (Angular `[input]="literal"` is normalised in here too). */
+  static_attributes?: Record<string, string> | null;
+
+  /** Identifier paths read by bound inputs, e.g. `[data]="currentOrder"` → `currentOrder`. */
+  bound_identifiers?: Record<string, string> | null;
+
+  /** Function names invoked by event handlers, e.g. `(click)="saveOrder()"` → `saveOrder`. */
+  event_handlers?: Record<string, string> | null;
+
+  /** String literals fed into translation pipes/functions inside text. */
+  i18n_keys?: string[] | null;
+  /** Property paths read via `{{ … }}` interpolations (e.g. `order.id`). */
+  bound_text_paths?: string[] | null;
+
+  /** Class tokens of the element, lowercased, sorted, deduplicated. */
+  css_classes?: string[] | null;
+
+  /** Tag names of immediate element-like children, in source order. */
+  child_shape?: string[] | null;
+
+  /** Anchors collected by walking up to the nearest section boundary. */
+  context?: ContextAttributes | null;
+
+  /** Structural directives lifted from the synthetic `<ng-template>` parent (`*ngIf`, `*ngFor`, ...). */
+  structural_directives?: Record<string, string> | null;
+
   // passthrough for future semantic attributes
-  [key: string]: string | null | undefined;
+  [key: string]:
+    | string
+    | string[]
+    | Record<string, string>
+    | ContextAttributes
+    | null
+    | undefined;
 }
 
 export interface DynamicChildren {
@@ -40,6 +108,16 @@ export interface RegistryEntry {
    * semantics drift (e.g. aria-label rewordings). Absent = no lock-in yet.
    */
   locator_name?: string;
+  /**
+   * How this entry's testid was made unique relative to its semantic peers.
+   * Set only when a collision-resolution strategy actually had to add a
+   * disambiguator (sibling-index `--N`, hash `--a3f9`). Absent = the testid
+   * is the bare semantic id, no collision.
+   */
+  disambiguator?: {
+    kind: 'sibling-index' | 'hash';
+    value: string;
+  };
   first_seen_version: number;
   last_seen_version: number;
   /** ISO-8601; set on fresh generation or regeneration, not on carry-overs */

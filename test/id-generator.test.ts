@@ -9,7 +9,19 @@ import {
 describe('kebab', () => {
   it('lowercases + replaces non-alnum with dashes', () => {
     expect(kebab('Customer Name!')).toBe('customer-name');
-    expect(kebab('Kunde wählen')).toBe('kunde-w-hlen');
+  });
+
+  it('transliterates German umlauts to ae/oe/ue/ss', () => {
+    expect(kebab('Kunde wählen')).toBe('kunde-waehlen');
+    expect(kebab('Größe')).toBe('groesse');
+    expect(kebab('Über uns')).toBe('ueber-uns');
+    expect(kebab('Adresse straße')).toBe('adresse-strasse');
+  });
+
+  it('strips non-German Latin diacritics down to the base letter', () => {
+    expect(kebab('Café')).toBe('cafe');
+    expect(kebab('niño')).toBe('nino');
+    expect(kebab('façade')).toBe('facade');
   });
 
   it('splits camelCase', () => {

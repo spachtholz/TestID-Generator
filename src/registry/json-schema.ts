@@ -61,6 +61,15 @@ export const registryJsonSchema = {
         },
         source: { type: 'string', enum: ['generated', 'manual'] },
         locator_name: { type: 'string', minLength: 1 },
+        disambiguator: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'value'],
+          properties: {
+            kind: { type: 'string', enum: ['sibling-index', 'hash'] },
+            value: { type: 'string', minLength: 1 }
+          }
+        },
         first_seen_version: { type: 'integer', minimum: 1 },
         last_seen_version: { type: 'integer', minimum: 1 },
         last_generated_at: { type: 'string', format: 'date-time' },
@@ -73,7 +82,10 @@ export const registryJsonSchema = {
     },
     semantic: {
       type: 'object',
-      additionalProperties: { type: ['string', 'null'] },
+      // Newer fields are optional and may be absent in older registry files;
+      // additional unknown keys are tolerated so registries written by
+      // mismatched tooling versions still validate.
+      additionalProperties: true,
       properties: {
         formcontrolname: { type: ['string', 'null'] },
         name: { type: ['string', 'null'] },
@@ -82,7 +94,81 @@ export const registryJsonSchema = {
         placeholder: { type: ['string', 'null'] },
         text_content: { type: ['string', 'null'] },
         type: { type: ['string', 'null'] },
-        role: { type: ['string', 'null'] }
+        role: { type: ['string', 'null'] },
+        title: { type: ['string', 'null'] },
+        alt: { type: ['string', 'null'] },
+        value: { type: ['string', 'null'] },
+        html_id: { type: ['string', 'null'] },
+        href: { type: ['string', 'null'] },
+        src: { type: ['string', 'null'] },
+        html_for: { type: ['string', 'null'] },
+        label: { type: ['string', 'null'] },
+        static_attributes: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: { type: 'string' } }
+          ]
+        },
+        bound_identifiers: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: { type: 'string' } }
+          ]
+        },
+        event_handlers: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: { type: 'string' } }
+          ]
+        },
+        i18n_keys: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        bound_text_paths: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        css_classes: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        child_shape: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'array', items: { type: 'string' } }
+          ]
+        },
+        structural_directives: {
+          oneOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: { type: 'string' } }
+          ]
+        },
+        context: {
+          oneOf: [
+            { type: 'null' },
+            { $ref: '#/definitions/context' }
+          ]
+        }
+      }
+    },
+    context: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        label_for: { type: ['string', 'null'] },
+        wrapper_label: { type: ['string', 'null'] },
+        fieldset_legend: { type: ['string', 'null'] },
+        preceding_heading: { type: ['string', 'null'] },
+        wrapper_formcontrolname: { type: ['string', 'null'] },
+        aria_labelledby_text: { type: ['string', 'null'] }
       }
     },
     dynamicChildren: {

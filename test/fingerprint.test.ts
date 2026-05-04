@@ -34,10 +34,14 @@ describe('generateFingerprint', () => {
     expect(fp.primaryValue).toBe('Save');
   });
 
-  it('ignores interpolated text in favor of nothing (FR-1.6)', () => {
+  it('extracts the bound identifier from a `{{ varName }}` interpolation', () => {
+    // The interpolation extractor surfaces the variable name (or, for
+    // translate-pipe arguments, the i18n key) so distinct buttons that
+    // share an interpolation slot still get distinct fingerprint keys.
     const el = firstElement(`<button>{{ saveLabel }}</button>`, 'button');
     const fp = generateFingerprint(el);
-    expect(fp.primaryValue).toBeNull();
+    expect(fp.primaryKey).toBe('bound_text_path');
+    expect(fp.primaryValue).toBe('saveLabel');
   });
 
   it('produces a deterministic fingerprint string', () => {

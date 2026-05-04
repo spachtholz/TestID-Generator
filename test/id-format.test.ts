@@ -13,7 +13,19 @@ const base = {
 describe('idFormat template', () => {
   it('uses the historical layout as default', () => {
     expect(generateId(base)).toBe('order-form__button--submit');
-    expect(DEFAULT_ID_FORMAT).toBe('{component}__{element}--{key}{hash:-}');
+    expect(DEFAULT_ID_FORMAT).toBe(
+      '{component}__{element}--{key}{disambiguator:--}{hash:-}'
+    );
+  });
+
+  it('renders the disambiguator slot when a sibling-index value is supplied', () => {
+    const id = generateId({ ...base, disambiguator: '2' });
+    expect(id).toBe('order-form__button--submit--2');
+  });
+
+  it('renders the disambiguator slot empty when no value is supplied', () => {
+    const id = generateId({ ...base });
+    expect(id).toBe('order-form__button--submit');
   });
 
   it('substitutes every known placeholder', () => {

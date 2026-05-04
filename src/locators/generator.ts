@@ -186,6 +186,12 @@ function buildModules(args: {
 
   const modules: LocatorModule[] = [];
   for (const [component, entries] of byComponent) {
+    // Two registry entries may end up with the same Python variable name when
+    // the variableFormat doesn't include `{hash}` or `{testid}` and two
+    // elements share `{component}/{element}/{key}`. Make the names unique
+    // deterministically so neither line silently overwrites the other when
+    // Robot reads the module.
+    disambiguateVariableNames(entries, lockNames);
     entries.sort((a, b) => a.variable.localeCompare(b.variable));
     modules.push({
       component,
@@ -195,6 +201,53 @@ function buildModules(args: {
   }
   modules.sort((a, b) => a.component.localeCompare(b.component));
   return modules;
+}
+
+/**
+ * Mutate `entries` in place so every `variable` is unique. The first hit of
+ * a given base name keeps the bare variable; subsequent hits become
+ * `<name>_2`, `<name>_3`, ... in deterministic testid order so the suffix
+ * binding is stable across runs (provided testids are stable, which they
+ * generally are once the registry has carried them over once).
+ *
+ * Frozen names from `lockNames` are treated as authoritative and never
+ * suffixed — a frozen name colliding with another entry indicates a real
+ * data corruption (manual edit) rather than a pure name-format issue.
+ */
+function disambiguateVariableNames(entries: LocatorEntry[], lockNames: boolean): void {
+  if (entries.length < 2) return;
+
+  // Process in deterministic order so first-claim semantics are stable.
+  const ordered = [...entries].sort((a, b) => a.testid.localeCompare(b.testid));
+  const claimed = new Set<string>();
+
+  for (const entry of ordered) {
+    if (claimed.has(entry.variable)) {
+      if (lockNames) {
+        // The frozen name is wrong (collides) — this is a hard inconsistency,
+        // but we still don't want to drop a row. Append a stable suffix
+        // derived from the testid hash so it at least diverges. We don't
+        // re-issue a clean `_2` because that would silently rename a
+        // previously-locked variable.
+        let candidate = entry.variable;
+        let n = 2;
+        while (claimed.has(candidate)) {
+          candidate = `${entry.variable}_${n}`;
+          n++;
+        }
+        entry.variable = candidate;
+      } else {
+        let n = 2;
+        let candidate = `${entry.variable}_${n}`;
+        while (claimed.has(candidate)) {
+          n++;
+          candidate = `${entry.variable}_${n}`;
+        }
+        entry.variable = candidate;
+      }
+    }
+    claimed.add(entry.variable);
+  }
 }
 
 function uniqueComponentPaths(registry: Registry): string[] {
