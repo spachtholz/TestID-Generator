@@ -1,4 +1,4 @@
-// Main tagger orchestrator (FR-1.x). Discover templates -> parse -> decide
+// Main tagger orchestrator. Discover templates -> parse -> decide
 // which elements to tag -> generate IDs -> rewrite -> persist registry.
 
 import { promises as fs } from 'node:fs';
@@ -73,7 +73,7 @@ export interface TaggerRunOptions {
   /** write tagged templates here instead of overwriting source */
   outputDir?: string;
   dryRun?: boolean;
-  /** --configuration=test bypasses testConfigurationOnly (FR-1.10) */
+  /** --configuration=test bypasses testConfigurationOnly */
   configuration?: string;
   now?: string;
   verbose?: boolean;
@@ -298,7 +298,7 @@ export async function runTagger(
 
     // Write a structured collision dump whenever we detected unresolvable
     // duplicates. The file groups warnings by fingerprint so the largest
-    // patterns float to the top — that's where the next fingerprint-tier
+    // patterns float to the top - that's where the next fingerprint-tier
     // extension should attack.
     if (collisionWarnings.length > 0) {
       await writeCollisionDump({
@@ -374,7 +374,7 @@ async function resolveTemplateFiles(args: {
  * Group previous-registry entries by their owning component-path so the
  * tagger can pass each template only the slice it cares about.
  *
- * Entries without a `component` field (legacy registries) are dropped — the
+ * Entries without a `component` field (legacy registries) are dropped - the
  * worst case is that the registry-aware resolver falls back to source-position
  * ordering for those, which is the pre-feature behaviour anyway.
  */
@@ -453,7 +453,7 @@ export interface TagTemplateOptions {
    * Subset of the previous-version registry entries belonging to this
    * component. Consulted by the sibling-index collision resolver to keep
    * `--N` slot assignments stable across re-runs even when the source has
-   * no testid attribute to anchor on. Empty / omitted ⇒ falls back to
+   * no testid attribute to anchor on. Empty / omitted means falls back to
    * pure source-position ordering (the legacy behaviour for first-time
    * tagging or for runs without a prior registry).
    */
@@ -498,7 +498,7 @@ export function tagTemplateSource(
   const parsed = parseAngularTemplate(source, { url: options.componentPath });
 
   const candidates: TagCandidate[] = [];
-  walkElements(parsed.ast, (el, loop, parents) => {
+  walkElements(parsed.ast, (el, loop, parents, blockContext) => {
     const detected = detectElement(el, config);
     if (!detected) return;
 
@@ -515,7 +515,8 @@ export function tagTemplateSource(
       parents,
       rootNodes: parsed.ast,
       attributeName: config.attributeName,
-      includeUtilityClasses: config.includeUtilityClasses
+      includeUtilityClasses: config.includeUtilityClasses,
+      blockContext
     });
 
     const insertionOffset = computeInsertionOffset(source, el);
@@ -539,7 +540,7 @@ export function tagTemplateSource(
     });
   });
 
-  // Assign IDs, handling collisions per the configured strategy (FR-1.7).
+  // Assign IDs, handling collisions per the configured strategy.
   const collisionWarnings: CollisionWarning[] = [];
   const collisions = assignCandidateIds({
     candidates,
@@ -551,7 +552,7 @@ export function tagTemplateSource(
     previousSlotMap: buildPreviousSlotMap(options.previousEntries)
   });
 
-  // Build registry entries (sorted later by the writer). FR-1.3: keep existing IDs.
+  // Build registry entries (sorted later by the writer). Existing IDs are preserved.
   const entries: Record<string, Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>> = {};
   for (const c of candidates) {
     const dynSpec = getDynamicChildrenSpec(c.detected.tag);
@@ -636,7 +637,7 @@ async function writeCollisionDump(args: {
       fingerprint,
       count: members.length,
       // Carry one fully-detailed example (with the semantic snapshot) so the
-      // user can see WHAT got extracted — that's how we diagnose missing
+      // user can see WHAT got extracted - that's how we diagnose missing
       // tiers. Subsequent members are listed location-only to keep the file
       // navigable.
       example: {
@@ -706,7 +707,7 @@ function resolveTaggerComponentNames(
           `\nSet componentNaming: 'disambiguate' (or rename one of the templates).`
       );
     }
-    // 'disambiguate' — derive a unique prefix from path segments
+    // 'disambiguate' - derive a unique prefix from path segments
     const labels = disambiguatePathGroup(group.map((g) => g.relPath), slug);
     for (let i = 0; i < group.length; i++) {
       out.set(group[i]!.file, labels[i]!);
@@ -771,7 +772,7 @@ function buildSemanticForRegistry(
     type: snap.type,
     role: snap.role
   };
-  // Optional named scalar fields — only emit when present so the JSON
+  // Optional named scalar fields - only emit when present so the JSON
   // stays compact for the common case.
   if (snap.title !== null) out.title = snap.title;
   if (snap.alt !== null) out.alt = snap.alt;
@@ -781,7 +782,7 @@ function buildSemanticForRegistry(
   if (snap.src !== null) out.src = snap.src;
   if (snap.html_for !== null) out.html_for = snap.html_for;
   if (snap.label !== null) out.label = snap.label;
-  // Catch-all maps and lists — drop empties.
+  // Catch-all maps and lists - drop empties.
   if (Object.keys(snap.static_attributes).length > 0) {
     out.static_attributes = { ...snap.static_attributes };
   }
@@ -798,7 +799,7 @@ function buildSemanticForRegistry(
   if (Object.keys(snap.structural_directives).length > 0) {
     out.structural_directives = { ...snap.structural_directives };
   }
-  // Surrounding context — emit only when at least one anchor was found.
+  // Surrounding context - emit only when at least one anchor was found.
   if (
     snap.context.label_for !== null ||
     snap.context.wrapper_label !== null ||
@@ -819,7 +820,7 @@ interface PreviousSlot {
 }
 
 /**
- * Only `sibling-index`-kind disambiguators are indexed — hash-suffixed ids
+ * Only `sibling-index`-kind disambiguators are indexed - hash-suffixed ids
  * and singletons have nothing to anchor on for slot reuse. Lists are sorted
  * ascending so the resolver's "lowest unclaimed slot" pass is deterministic.
  */
@@ -855,15 +856,15 @@ function buildPreviousSlotMap(
  * in place; returns the count of collisions seen for the run-level metric.
  *
  * Strategies:
- * - 'error'         — throw on first collision.
- * - 'hash-suffix'   — re-render with `{hash}` filled in.
- * - 'sibling-index' — assign `--1`, `--2`, … via the `{disambiguator}` slot.
+ * - 'error'         - throw on first collision.
+ * - 'hash-suffix'   - re-render with `{hash}` filled in.
+ * - 'sibling-index' - assign `--1`, `--2`, … via the `{disambiguator}` slot.
  *                     Registry-aware: when the previous registry contains
  *                     fingerprint-matching slots for this bare-id family,
  *                     each match keeps its old slot value; new candidates
  *                     pick the next free slot. When no previous registry is
  *                     available, falls back to source-position ordering.
- * - 'auto'          — try sibling-index first (readable), fall back to hash
+ * - 'auto'          - try sibling-index first (readable), fall back to hash
  *                     if the format has no disambiguator slot, and finally
  *                     warn if nothing helped.
  */
@@ -923,10 +924,10 @@ function assignCandidateIds(args: {
     const indices = byBareId.get(bare)!;
 
     // Sort the group deterministically by source position so suffix
-    // assignment is stable across re-runs (same source → same suffix).
+    // assignment is stable across re-runs (same source to same suffix).
     indices.sort((a, b) => candidates[a]!.sortKey - candidates[b]!.sortKey);
 
-    // Group shrunk to a singleton — heuristic mapping risk, surface it.
+    // Group shrunk to a singleton - heuristic mapping risk, surface it.
     const previousSlotsForBare = previousSlotMap.get(bare) ?? [];
     if (indices.length === 1 && previousSlotsForBare.length > 1) {
       const c = candidates[indices[0]!]!;
@@ -946,7 +947,7 @@ function assignCandidateIds(args: {
     }
 
     if (indices.length === 1) {
-      // Singleton group — assign the bare id directly. No disambiguator
+      // Singleton group - assign the bare id directly. No disambiguator
       // needed; the existing-id check below tells generated vs. manual.
       const i = indices[0]!;
       const c = candidates[i]!;
@@ -955,7 +956,7 @@ function assignCandidateIds(args: {
       continue;
     }
 
-    // n > 1 → real collision. Apply the configured strategy.
+    // n > 1 to real collision. Apply the configured strategy.
     if (config.collisionStrategy === 'error') {
       const c = candidates[indices[0]!]!;
       throw new Error(
@@ -1020,7 +1021,7 @@ function assignCandidateIds(args: {
 
     if (assignment !== null) {
       // Detect duplicates within the proposed assignment (e.g. hash-suffix
-      // on byte-identical fingerprints) — fall through to the warning path.
+      // on byte-identical fingerprints) - fall through to the warning path.
       const seen = new Set<string>();
       let allUnique = true;
       for (const a of assignment) {
@@ -1036,7 +1037,7 @@ function assignCandidateIds(args: {
       }
     }
 
-    // Truly unresolvable — fall back to letting them share the bare id
+    // Truly unresolvable - fall back to letting them share the bare id
     // and emit a warning so the user can extend the fingerprint.
     for (const i of indices) {
       const c = candidates[i]!;
@@ -1108,7 +1109,7 @@ interface AssignmentEntry {
  * its numeric suffix, (2) remaining candidates inherit the lowest unclaimed
  * previous slot whose fingerprint matches, (3) the rest take the next free
  * numeric value. For byte-identical insertion at the FRONT or MIDDLE of a
- * group the mapping is informationally underdetermined — the caller surfaces
+ * group the mapping is informationally underdetermined - the caller surfaces
  * a `collision-group-size-changed` warning so the user can verify.
  */
 function computeSiblingIndexAssignment(
@@ -1198,7 +1199,7 @@ function computeSiblingIndexAssignment(
 
 /**
  * Compute hash-suffixed assignments for a colliding group. Returns null when
- * the format has no `{hash}` slot — caller should fall back to another
+ * the format has no `{hash}` slot - caller should fall back to another
  * strategy or the warning path. The returned ids may still contain duplicates
  * if the group's fingerprints are byte-identical; the caller checks for that.
  */

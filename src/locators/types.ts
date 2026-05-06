@@ -115,6 +115,14 @@ export interface GenerateLocatorsOptions {
    * iteration order.
    */
   collisionSuffix?: 'numeric' | 'hash';
+  /**
+   * Selector engine. `xpath` (default) emits
+   * `xpath://*[@data-testid='...']`; `css` emits `css=[data-testid='...']`.
+   * CSS is faster and Browser-Library-friendly.
+   */
+  selectorEngine?: 'xpath' | 'css';
+  /** Prefix for css selectors. Default `css=`. */
+  cssPrefix?: string;
 }
 
 export interface MigrationReportEntry {
@@ -131,10 +139,23 @@ export interface MigrationReport {
   orphanFiles: string[];
 }
 
+/**
+ * Same Python variable name produced by two or more components - Robot
+ * Framework imports are name-keyed at module load, so the second module
+ * silently shadows the first when both are referenced in one suite.
+ */
+export interface CrossFileCollision {
+  variable: string;
+  components: string[];
+}
+
 export interface GenerateLocatorsResult {
   modules: LocatorModule[];
   writtenPaths: string[];
   /** True when the registry was rewritten to persist `locator_name` changes. */
   registryWritten?: boolean;
   migrationReport?: MigrationReport;
+  /** Cross-component variable-name collisions detected during the run. Empty
+   *  when every module's variable set is globally unique. */
+  crossFileCollisions?: CrossFileCollision[];
 }

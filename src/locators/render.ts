@@ -24,7 +24,7 @@ export function camelCaseTestid(testid: string): string {
 }
 
 /** Like `camelCaseTestid`, but preserves boundaries already in the input
- * (`saveAddress` stays `saveAddress`) — needed because discriminator values
+ * (`saveAddress` stays `saveAddress`) - needed because discriminator values
  * often come from source-code identifiers in their original casing. */
 export function camelCaseDiscriminator(value: string): string {
   if (!value) return '';
@@ -41,12 +41,37 @@ export function filenameForComponent(component: string): string {
   return `${stem}.py`;
 }
 
+export type SelectorEngine = 'xpath' | 'css';
+
 export function xpathFor(
   testid: string,
   attributeName: string,
   xpathPrefix: string
 ): string {
   return `${xpathPrefix}//*[@${attributeName}='${testid}']`;
+}
+
+export function cssFor(
+  testid: string,
+  attributeName: string,
+  cssPrefix: string
+): string {
+  // Robot's SeleniumLibrary auto-detects CSS by leading `css=`; Browser
+  // Library accepts the same. testid values are kebab/underscore-only so
+  // they don't need escaping inside the attribute selector.
+  return `${cssPrefix}[${attributeName}='${testid}']`;
+}
+
+export function selectorFor(args: {
+  engine: SelectorEngine;
+  testid: string;
+  attributeName: string;
+  xpathPrefix: string;
+  cssPrefix: string;
+}): string {
+  return args.engine === 'css'
+    ? cssFor(args.testid, args.attributeName, args.cssPrefix)
+    : xpathFor(args.testid, args.attributeName, args.xpathPrefix);
 }
 
 /**
@@ -115,50 +140,92 @@ function primarySemanticValue(entry: RegistryEntry): string {
 /**
  * Priority order for the secondary-discriminator pass: identifier-like fields
  * (stable across edits) come first, soft text and styling fields last.
+ *
+ * Each entry carries a `name` so the resolver can apply field-specific
+ * post-processing (e.g. compacting `child_shape` to the first diverging
+ * child instead of the full chain) without losing track of the source.
  */
 type FieldExtractor = (entry: RegistryEntry) => string | undefined;
 
-export const DISCRIMINATOR_FIELDS: readonly FieldExtractor[] = [
-  (e) => stringOrNull(e.semantic.formcontrolname),
-  (e) => stringOrNull(e.semantic.name),
-  (e) => stringOrNull(e.semantic.routerlink),
-  (e) => stringOrNull(e.semantic.href),
-  (e) => stringOrNull(e.semantic.html_for),
-  (e) => stringOrNull(e.semantic.html_id),
-  (e) => stringOrNull(e.semantic.aria_label),
-  (e) => stringOrNull(e.semantic.label),
-  (e) => stringOrNull(e.semantic.context?.label_for),
-  (e) => stringOrNull(e.semantic.context?.wrapper_label),
-  (e) => stringOrNull(e.semantic.context?.fieldset_legend),
-  (e) => stringOrNull(e.semantic.context?.preceding_heading),
-  (e) => stringOrNull(e.semantic.context?.wrapper_formcontrolname),
-  (e) => stringOrNull(e.semantic.context?.aria_labelledby_text),
-  (e) => stringFromMap(e.semantic.event_handlers, 'click'),
-  (e) => stringFromMap(e.semantic.event_handlers, 'submit'),
-  (e) => stringFromMap(e.semantic.event_handlers, 'change'),
-  (e) => stringFromMap(e.semantic.event_handlers, 'input'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'data'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'options'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'value'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'model'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'item'),
-  (e) => stringFromMap(e.semantic.bound_identifiers, 'items'),
-  (e) => stringOrNull(e.semantic.placeholder),
-  (e) => stringOrNull(e.semantic.title),
-  (e) => stringOrNull(e.semantic.text_content),
-  (e) => stringOrNull(e.semantic.alt),
-  (e) => stringOrNull(e.semantic.value),
-  (e) => stringOrNull(e.semantic.type),
-  (e) => stringOrNull(e.semantic.role),
-  (e) => stringFromMap(e.semantic.static_attributes, 'severity'),
-  (e) => stringFromMap(e.semantic.static_attributes, 'variant'),
-  (e) => stringFromMap(e.semantic.static_attributes, 'icon'),
-  (e) => {
-    const cs = e.semantic.child_shape;
-    if (!Array.isArray(cs) || cs.length === 0) return undefined;
-    return cs.join('-');
+export interface DiscriminatorField {
+  name: string;
+  extract: FieldExtractor;
+}
+
+export const DISCRIMINATOR_FIELDS: readonly DiscriminatorField[] = [
+  { name: 'formcontrolname', extract: (e) => stringOrNull(e.semantic.formcontrolname) },
+  { name: 'name', extract: (e) => stringOrNull(e.semantic.name) },
+  { name: 'routerlink', extract: (e) => stringOrNull(e.semantic.routerlink) },
+  { name: 'href', extract: (e) => stringOrNull(e.semantic.href) },
+  { name: 'html_for', extract: (e) => stringOrNull(e.semantic.html_for) },
+  { name: 'html_id', extract: (e) => stringOrNull(e.semantic.html_id) },
+  { name: 'aria_label', extract: (e) => stringOrNull(e.semantic.aria_label) },
+  { name: 'label', extract: (e) => stringOrNull(e.semantic.label) },
+  { name: 'context.label_for', extract: (e) => stringOrNull(e.semantic.context?.label_for) },
+  { name: 'context.wrapper_label', extract: (e) => stringOrNull(e.semantic.context?.wrapper_label) },
+  { name: 'context.fieldset_legend', extract: (e) => stringOrNull(e.semantic.context?.fieldset_legend) },
+  { name: 'context.preceding_heading', extract: (e) => stringOrNull(e.semantic.context?.preceding_heading) },
+  { name: 'context.wrapper_formcontrolname', extract: (e) => stringOrNull(e.semantic.context?.wrapper_formcontrolname) },
+  { name: 'context.aria_labelledby_text', extract: (e) => stringOrNull(e.semantic.context?.aria_labelledby_text) },
+  { name: 'event.click', extract: (e) => stringFromMap(e.semantic.event_handlers, 'click') },
+  { name: 'event.submit', extract: (e) => stringFromMap(e.semantic.event_handlers, 'submit') },
+  { name: 'event.change', extract: (e) => stringFromMap(e.semantic.event_handlers, 'change') },
+  { name: 'event.input', extract: (e) => stringFromMap(e.semantic.event_handlers, 'input') },
+  { name: 'bound.data', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'data') },
+  { name: 'bound.options', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'options') },
+  { name: 'bound.value', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'value') },
+  { name: 'bound.model', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'model') },
+  { name: 'bound.item', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'item') },
+  { name: 'bound.items', extract: (e) => stringFromMap(e.semantic.bound_identifiers, 'items') },
+  { name: 'placeholder', extract: (e) => stringOrNull(e.semantic.placeholder) },
+  { name: 'title', extract: (e) => stringOrNull(e.semantic.title) },
+  { name: 'text_content', extract: (e) => stringOrNull(e.semantic.text_content) },
+  { name: 'alt', extract: (e) => stringOrNull(e.semantic.alt) },
+  { name: 'value', extract: (e) => stringOrNull(e.semantic.value) },
+  { name: 'type', extract: (e) => stringOrNull(e.semantic.type) },
+  { name: 'role', extract: (e) => stringOrNull(e.semantic.role) },
+  { name: 'attr.severity', extract: (e) => stringFromMap(e.semantic.static_attributes, 'severity') },
+  { name: 'attr.variant', extract: (e) => stringFromMap(e.semantic.static_attributes, 'variant') },
+  { name: 'attr.icon', extract: (e) => stringFromMap(e.semantic.static_attributes, 'icon') },
+  {
+    name: 'child_shape',
+    extract: (e) => {
+      const cs = e.semantic.child_shape;
+      if (!Array.isArray(cs) || cs.length === 0) return undefined;
+      return cs.join('-');
+    }
   }
 ];
+
+/**
+ * Compact suffix for `child_shape`: walk the structured arrays position by
+ * position and return the first index whose value differs across all
+ * members. `["h3:adresse", "p", "img"]` vs `["h3:adresse", "p", "span"]`
+ * yields `["img", "span"]` instead of the full join - the prefix is shared
+ * and adds no signal to the variable name.
+ *
+ * Returns null when no single position fully separates the group.
+ */
+export function compactChildShapeSuffix(
+  members: readonly { entry: RegistryEntry }[]
+): string[] | null {
+  const arrays: string[][] = members.map((m) => {
+    const cs = m.entry.semantic.child_shape;
+    return Array.isArray(cs) ? (cs as string[]) : [];
+  });
+  const maxLen = Math.max(...arrays.map((a) => a.length));
+  if (maxLen === 0) return null;
+
+  for (let i = 0; i < maxLen; i++) {
+    const tokens = arrays.map((a) => (i < a.length && a[i]!.length > 0 ? a[i]! : 'none'));
+    const unique = new Set(tokens);
+    if (unique.size !== members.length) continue;
+    const hasReal = tokens.some((t) => t !== 'none');
+    if (!hasReal) continue;
+    return tokens;
+  }
+  return null;
+}
 
 function stringOrNull(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -175,28 +242,41 @@ function stringFromMap(map: unknown, key: string): string | undefined {
 /**
  * Returns one value per member when a single field gives every member a
  * distinct non-empty value. A value is rejected when it equals the entry's
- * own primary — appending `key_key` carries no info for the reader.
+ * own primary - appending `key_key` carries no info for the reader.
  *
- * Two passes:
- *   1. Strict: every member must have a non-empty value. Catches the common
- *      case (all buttons have an aria-label, click handler, etc.).
- *   2. Loose: a missing value becomes the sentinel `none`, so an asymmetric
- *      pair like "wrapper with children" vs "self-closing wrapper" still
- *      disambiguates instead of falling through to the numeric/hash suffix.
- *      Requires at least one real (non-sentinel) value so we don't end up
- *      with `_none` vs `_none`.
+ * Three passes, in order of precision:
+ *   1. Fingerprint-walk: parse each member's fingerprint into field=value
+ *      pairs, walk the canonical order (PRIORITY from the tagger), and pick
+ *      the first field whose values are unique across all members. This is
+ *      the most precise pass because the fingerprint is the same string the
+ *      tagger uses to decide identity - whatever first separates two ids
+ *      should also be the most readable suffix (`class=primary` vs
+ *      `class=secondary` means `_primary` / `_secondary`).
+ *   2. DISCRIMINATOR_FIELDS strict: extract semantic fields one by one,
+ *      every member must have a non-empty value. Catches cases where the
+ *      fingerprint string isn't available or its tokens collapse multiple
+ *      values together.
+ *   3. DISCRIMINATOR_FIELDS loose: a missing value becomes the sentinel
+ *      `none`, so an asymmetric pair (one wrapper has children, one is
+ *      empty) still disambiguates instead of falling through to the
+ *      numeric/hash suffix. Needs at least one real value.
  */
 export function findLocatorDiscriminator(
   members: readonly { testid: string; entry: RegistryEntry }[]
 ): string[] | null {
   if (members.length === 0) return null;
-  // Pass 1 — strict
-  for (const extract of DISCRIMINATOR_FIELDS) {
+
+  // Pass 0 - walk the fingerprint string itself
+  const fpResult = discriminateByFingerprint(members);
+  if (fpResult) return fpResult;
+
+  // Pass 1 - strict, semantic field extractors
+  for (const field of DISCRIMINATOR_FIELDS) {
     const values: string[] = [];
     const seen = new Set<string>();
     let ok = true;
     for (const m of members) {
-      const v = extract(m.entry);
+      const v = field.extract(m.entry);
       if (!v) { ok = false; break; }
       const primary = primarySemanticValue(m.entry);
       if (v === primary) { ok = false; break; }
@@ -204,16 +284,18 @@ export function findLocatorDiscriminator(
       seen.add(v);
       values.push(v);
     }
-    if (ok && values.length === members.length) return values;
+    if (ok && values.length === members.length) {
+      return compactIfNeeded(field.name, values, members);
+    }
   }
-  // Pass 2 — loose, with `none` sentinel for absent values
-  for (const extract of DISCRIMINATOR_FIELDS) {
+  // Pass 2 - loose, with `none` sentinel for absent values
+  for (const field of DISCRIMINATOR_FIELDS) {
     const values: string[] = [];
     const seen = new Set<string>();
     let nonEmpty = 0;
     let ok = true;
     for (const m of members) {
-      const raw = extract(m.entry);
+      const raw = field.extract(m.entry);
       const v = raw ?? 'none';
       if (raw) {
         nonEmpty++;
@@ -224,7 +306,106 @@ export function findLocatorDiscriminator(
       seen.add(v);
       values.push(v);
     }
-    if (ok && nonEmpty > 0 && values.length === members.length) return values;
+    if (ok && nonEmpty > 0 && values.length === members.length) {
+      return compactIfNeeded(field.name, values, members);
+    }
+  }
+  return null;
+}
+
+/**
+ * Apply field-specific shortening so list-shaped fields like `child_shape`
+ * don't produce variable names like `_h3AdresseAPHauptstr12ImgLogoSpanX`.
+ * For `child_shape` we keep just the first child token that diverges across
+ * the group; if no single position separates everyone, we leave the full
+ * join in place (the caller will fall through to numeric/hash anyway).
+ */
+function compactIfNeeded(
+  fieldName: string,
+  values: string[],
+  members: readonly { entry: RegistryEntry }[]
+): string[] {
+  if (fieldName !== 'child_shape') return values;
+  const compact = compactChildShapeSuffix(members);
+  return compact ?? values;
+}
+
+/**
+ * Parse `tag|key1=val1|key2=val2|...` into a field-name-keyed map. The bare
+ * tag token (no `=`) goes under the synthetic key `__tag__` so callers can
+ * skip it (the tag is shared by definition for every member of a colliding
+ * locator group, since `{element}` in the variable name comes from it).
+ */
+function parseFingerprintTokens(fingerprint: string | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!fingerprint) return map;
+  const tokens = fingerprint.split('|');
+  if (tokens.length === 0) return map;
+  map.set('__tag__', tokens[0]!);
+  for (let i = 1; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    const eqIdx = tok.indexOf('=');
+    if (eqIdx === -1) {
+      map.set(tok, '');
+    } else {
+      map.set(tok.slice(0, eqIdx), tok.slice(eqIdx + 1));
+    }
+  }
+  return map;
+}
+
+function discriminateByFingerprint(
+  members: readonly { testid: string; entry: RegistryEntry }[]
+): string[] | null {
+  const parsed = members.map((m) => parseFingerprintTokens(m.entry.fingerprint));
+
+  // Build the canonical walk order: union of all field names, in the order
+  // they first appear across the parsed maps. Each individual fingerprint is
+  // already serialized by the tagger in PRIORITY order, so this respects the
+  // same precedence the id generator uses (formcontrolname > aria-label >
+  // ... > css_class > child_shape > attr.* > bound.* > on.* > class > struct.*).
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parsed) {
+    for (const key of p.keys()) {
+      if (key === '__tag__') continue;
+      if (!seen.has(key)) {
+        seen.add(key);
+        order.push(key);
+      }
+    }
+  }
+  if (order.length === 0) return null;
+
+  for (const field of order) {
+    const raw = parsed.map((p) => p.get(field));
+    const sentinelled = raw.map((v) => (v === undefined || v.length === 0 ? 'none' : v));
+    const unique = new Set(sentinelled);
+    if (unique.size !== members.length) continue;
+    // Need at least one real value - `none` vs `none` is no signal.
+    const hasReal = raw.some((v) => v !== undefined && v.length > 0);
+    if (!hasReal) continue;
+    // Reject the case where the chosen field is also the entry's primary
+    // semantic value: appending `_save` to `…_save` reads as redundant.
+    let redundant = false;
+    for (let i = 0; i < members.length; i++) {
+      const v = raw[i];
+      if (v === undefined || v.length === 0) continue;
+      const primary = primarySemanticValue(members[i]!.entry);
+      if (v === primary) { redundant = true; break; }
+    }
+    if (redundant) continue;
+    // child_shape lives in the fingerprint as one big `tag:key-tag:key-...`
+    // join. Use the structured array to prefer the first diverging child
+    // instead of the whole chain so the variable name stays short.
+    if (field === 'child_shape') {
+      const compact = compactChildShapeSuffix(members);
+      if (compact) return compact;
+      // No single position fully separates all members to skip this field
+      // and let the caller try the next one (or fall through to numeric).
+      continue;
+    }
+    return sentinelled;
   }
   return null;
 }
@@ -273,7 +454,7 @@ export function renderVariableName(
     key: camelCaseTestid(primarySemanticValue(entry)),
     tag: camelCaseTestid(entry.tag),
     hash,
-    // {testid} renders the camelCased raw testid — the single value that
+    // {testid} renders the camelCased raw testid - the single value that
     // survives template structure changes (tagger preserves data-testid
     // attributes across runs), making it the most stable anchor available.
     testid: camelCaseTestid(testid)
@@ -329,12 +510,17 @@ export function renderLocatorModule(mod: LocatorModule): string {
 export interface BuildLocatorEntryOptions {
   attributeName: string;
   xpathPrefix: string;
+  /** Prefix for css mode. Defaults to 'css=' which Robot's SeleniumLibrary
+   *  and the Browser Library both auto-detect. */
+  cssPrefix?: string;
+  /** Selector engine. Default 'xpath' for backwards compatibility. */
+  selectorEngine?: SelectorEngine;
   variableFormat?: string;
   /** When set, variable name is derived from the entry via the template. */
   entry?: RegistryEntry;
   /**
    * Pre-frozen variable name (from `entry.locator_name`). When present, wins
-   * over any template-derived name — this is the mechanism that keeps
+   * over any template-derived name - this is the mechanism that keeps
    * Python constants stable across semantic edits.
    */
   frozenName?: string;
@@ -361,9 +547,16 @@ export function buildLocatorEntry(
   } else {
     variable = camelCaseTestid(testid);
   }
+  const selector = selectorFor({
+    engine: options.selectorEngine ?? 'xpath',
+    testid,
+    attributeName: options.attributeName,
+    xpathPrefix: options.xpathPrefix,
+    cssPrefix: options.cssPrefix ?? 'css='
+  });
   return {
     variable,
-    selector: xpathFor(testid, options.attributeName, options.xpathPrefix),
+    selector,
     testid,
     frozen: usedFrozen
   };

@@ -114,7 +114,7 @@ describe('child_shape fingerprint field', () => {
   });
 
   it('only fills the {key} slot when no higher-priority semantic field exists', () => {
-    // div with formcontrolname → formcontrolname wins, not child_shape
+    // div with formcontrolname to formcontrolname wins, not child_shape
     const withFcn = findAll(
       `<div formcontrolname="x"><span></span><button></button></div>`,
       'div'
@@ -122,7 +122,7 @@ describe('child_shape fingerprint field', () => {
     const fp1 = generateFingerprint(withFcn.hits[0]!, { rootNodes: withFcn.rootNodes });
     expect(fp1.primaryKey).toBe('formcontrolname');
 
-    // bare div → child_shape becomes primary key
+    // bare div to child_shape becomes primary key
     const bare = findAll(`<div><span></span><button></button></div>`, 'div');
     const fp2 = generateFingerprint(bare.hits[0]!, { rootNodes: bare.rootNodes });
     expect(fp2.primaryKey).toBe('child_shape');

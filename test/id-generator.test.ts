@@ -41,7 +41,7 @@ describe('componentNameFromPath', () => {
 });
 
 describe('generateId', () => {
-  it('follows the FR-1.7 format', () => {
+  it('follows the documented id format', () => {
     expect(
       generateId({
         componentName: 'login',

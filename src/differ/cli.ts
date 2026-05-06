@@ -167,7 +167,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     const msg =
       `unchanged=${summary.unchanged} added=${summary.added} removed=${summary.removed} ` +
       `renamed=${summary.renamed} modified=${summary.modified} regenerated=${summary.regenerated}`;
-    process.stdout.write(pc.cyan(`[testid-differ] v${diff.from_version} → v${diff.to_version}: ${msg}\n`));
+    process.stdout.write(pc.cyan(`[testid-differ] v${diff.from_version} to v${diff.to_version}: ${msg}\n`));
   }
 
   return exitCodeForDiff(diff);

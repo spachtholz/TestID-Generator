@@ -179,7 +179,7 @@ describe('collisionSuffix: hash', () => {
   });
 
   it('replaces _2/_3 with a stable fingerprint-hash suffix when nothing else can split the group', async () => {
-    // Byte-identical semantic snapshots — only the testid hash and
+    // Byte-identical semantic snapshots - only the testid hash and
     // fingerprint differ. Numeric mode would emit `_2` for the second one.
     const registry: Registry = {
       ...createEmptyRegistry(1, '2026-05-05T10:00:00Z'),
@@ -197,7 +197,7 @@ describe('collisionSuffix: hash', () => {
     const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
 
     expect(py).not.toMatch(/order_nativeButton_save_2\b/);
-    // Two managed lines, both with `_<hex4>` suffix — hex hashes have no
+    // Two managed lines, both with `_<hex4>` suffix - hex hashes have no
     // `_2`/`_3`-style trailing digit run alone, so the regex below is safe.
     const hashSuffixed = py.match(/order_nativeButton_save_[0-9a-f]{4}\b/g);
     expect(hashSuffixed?.length).toBeGreaterThanOrEqual(1);
@@ -238,7 +238,7 @@ describe('collisionSuffix: hash', () => {
       .split('\n')
       .find((l) => l.includes("data-testid='order__button--save-aaaa'"));
 
-    // A's variable name must not have changed — same fingerprint, same hash.
+    // A's variable name must not have changed - same fingerprint, same hash.
     const aVar1 = aLine1!.split(' ')[0];
     const aVar2 = aLine2!.split(' ')[0];
     expect(aVar2).toBe(aVar1);

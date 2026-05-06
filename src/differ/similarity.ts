@@ -1,5 +1,5 @@
 /**
- * Similarity scoring (FR-3.4).
+ * Similarity scoring.
  *
  * We compute similarity between two registry entries by Levenshtein-distance
  * over a deterministic serialisation of their semantic attributes. A score of
@@ -54,17 +54,63 @@ export function similarityScore(a: string, b: string): number {
  * Serialise semantic attributes into a stable, canonical string. Keys are
  * sorted alphabetically so two snapshots with the same fields always produce
  * the same string regardless of object-key insertion order.
+ *
+ * Sub-objects (`event_handlers`, `bound_identifiers`, `static_attributes`,
+ * `context`, `structural_directives`) are flattened to dotted paths
+ * (`event_handlers.click=saveAddress`) so a Levenshtein comparison actually
+ * sees those values - the previous implementation stringified them as
+ * `[object Object]`, which collapsed rename-detection precisely for the
+ * fields that distinguish two similar-but-not-identical buttons (different
+ * click handlers, severity attrs, fieldset legends, …).
  */
 export function serializeSemantics(semantic: SemanticAttributes): string {
-  const keys = Object.keys(semantic).sort();
   const parts: string[] = [];
-  for (const key of keys) {
-    const v = semantic[key];
-    if (v != null && v !== '') {
-      parts.push(`${key}=${v}`);
+  flatten(semantic as Record<string, unknown>, '', parts);
+  parts.sort();
+  return parts.join('|');
+}
+
+function flatten(
+  value: unknown,
+  prefix: string,
+  out: string[]
+): void {
+  if (value == null) return;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return;
+    // Stringify in source order - many list-shaped fields (child_shape,
+    // bound_text_paths) carry semantic meaning in their ordering.
+    out.push(`${prefix}=${value.map((v) => stringifyScalar(v)).join(',')}`);
+    return;
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    for (const k of keys) {
+      const child = obj[k];
+      if (child == null) continue;
+      const childPrefix = prefix.length === 0 ? k : `${prefix}.${k}`;
+      flatten(child, childPrefix, out);
+    }
+    return;
+  }
+  // Scalar - string, number, boolean.
+  if (value === '') return;
+  out.push(`${prefix}=${stringifyScalar(value)}`);
+}
+
+function stringifyScalar(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'object') {
+    // Defensive: nested arrays/objects inside an array element. Render as
+    // sorted JSON so similarity isn't ordering-sensitive there either.
+    try {
+      return JSON.stringify(v, Object.keys(v as object).sort());
+    } catch {
+      return '';
     }
   }
-  return parts.join('|');
+  return String(v);
 }
 
 /** Compute similarity between two registry entries. */

@@ -8,12 +8,16 @@ export interface RenderArgs {
   orphanHits: ReferenceHit[];
   filesChanged: number;
   occurrencesChanged: number;
+  pathRewrites?: number;
   dryRun: boolean;
   robotDir: string;
 }
 
 export function renderMigrationReport(args: RenderArgs): string {
-  const { plan, hits, orphanHits, filesChanged, occurrencesChanged, dryRun, robotDir } = args;
+  const {
+    plan, hits, orphanHits, filesChanged, occurrencesChanged,
+    pathRewrites = 0, dryRun, robotDir
+  } = args;
   const lines: string[] = [];
   lines.push('# Locator migration report');
   lines.push('');
@@ -21,7 +25,8 @@ export function renderMigrationReport(args: RenderArgs): string {
   if (
     plan.renames.length === 0 &&
     plan.orphans.length === 0 &&
-    plan.conflicts.length === 0
+    plan.conflicts.length === 0 &&
+    plan.fileRenames.length === 0
   ) {
     lines.push('No changes detected: every testid maps to the same variable name.');
     lines.push('');
@@ -32,10 +37,20 @@ export function renderMigrationReport(args: RenderArgs): string {
     `Renames: ${plan.renames.length}  ` +
       `Orphans: ${plan.orphans.length}  ` +
       `Conflicts: ${plan.conflicts.length}  ` +
+      `FileRenames: ${plan.fileRenames.length}  ` +
       `Added: ${plan.added}  ` +
       `Unchanged: ${plan.unchanged}`
   );
   lines.push('');
+
+  if (plan.fileRenames.length > 0) {
+    lines.push('## File renames (Variables/Resource/Library import paths)');
+    lines.push('');
+    for (const r of plan.fileRenames) {
+      lines.push(`  ${r.oldFile}  ->  ${r.newFile}`);
+    }
+    lines.push('');
+  }
 
   if (plan.renames.length > 0) {
     lines.push('## Renames');
@@ -84,7 +99,9 @@ export function renderMigrationReport(args: RenderArgs): string {
   lines.push('');
   lines.push(
     `  ${dryRun ? 'Would update' : 'Updated'} ${filesChanged} file(s), ` +
-      `${occurrencesChanged} occurrence(s).`
+      `${occurrencesChanged} variable occurrence(s)` +
+      (pathRewrites > 0 ? `, ${pathRewrites} import path rewrite(s)` : '') +
+      '.'
   );
   if (dryRun) {
     lines.push('  (dry-run: re-run with --apply to write the changes)');

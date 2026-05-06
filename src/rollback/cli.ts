@@ -61,8 +61,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
           `[testid-rollback] ${verb} ${result.restoredFiles.length} file(s), ` +
             `rolled back v${result.rolledBackVersion}` +
             (result.restoredToVersion !== null
-              ? ` → latest now points to v${result.restoredToVersion}.\n`
-              : ' → no prior version, latest.json removed.\n')
+              ? ` to latest now points to v${result.restoredToVersion}.\n`
+              : ' to no prior version, latest.json removed.\n')
         )
       );
       for (const file of result.restoredFiles) {

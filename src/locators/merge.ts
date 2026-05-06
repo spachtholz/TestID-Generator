@@ -34,7 +34,11 @@ export function classifyLocatorLine(
   if (!MANAGED_TRAILER_PATTERN.test(line)) {
     return { kind: 'manual', raw: line };
   }
-  const testidPattern = new RegExp(`@${escapeRegex(attributeName)}='([^']+)'`);
+  // Match both notations:
+  //   xpath form: `@data-testid='value'` (the `@` comes from XPath)
+  //   css   form: `[data-testid='value']` (no `@`, attribute selector)
+  const attr = escapeRegex(attributeName);
+  const testidPattern = new RegExp(`(?:@${attr}|\\[${attr})='([^']+)'`);
   const match = testidPattern.exec(line);
   if (!match) {
     return { kind: 'manual', raw: line };

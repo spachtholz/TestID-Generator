@@ -15,6 +15,15 @@ export interface IdHistoryRecord {
   latest_recorded_version: number;
   /** versions where the id (re-)appeared after absence */
   generation_history: number[];
+  /**
+   * `locator_name` from the most recent snapshot in which this id was
+   * present. Carried into mergeEntriesWithHistory so that a regenerated
+   * entry (one that disappeared for ≥1 version and came back) keeps the
+   * same locked Python variable name it had before the gap. Without this,
+   * lockNames would unfreeze every absent-then-restored id and downstream
+   * Robot tests would break.
+   */
+  last_locator_name?: string;
 }
 
 export type HistoryMap = Map<string, IdHistoryRecord>;
@@ -27,21 +36,31 @@ export async function loadFullHistory(dir: string): Promise<HistoryMap> {
   const registries = await Promise.all(files.map((f) => readRegistryFile(f.path)));
 
   // `presence[id]` = sorted list of versions the id appeared in.
+  // `lastLocatorName[id]` = locator_name from the *latest* snapshot in
+  // which the id was present. Files are walked in ascending version order
+  // so the final assignment wins for each id.
   const presence = new Map<string, number[]>();
+  const lastLocatorName = new Map<string, string>();
   for (let i = 0; i < files.length; i++) {
     const registry = registries[i];
     if (!registry) continue;
     const version = files[i]!.version;
-    for (const id of Object.keys(registry.entries)) {
+    for (const [id, entry] of Object.entries(registry.entries)) {
       const list = presence.get(id) ?? [];
       list.push(version);
       presence.set(id, list);
+      if (entry.locator_name !== undefined) {
+        lastLocatorName.set(id, entry.locator_name);
+      }
     }
   }
 
   const map: HistoryMap = new Map();
   for (const [id, versions] of presence) {
-    map.set(id, summarize(versions));
+    const summary = summarize(versions);
+    const ln = lastLocatorName.get(id);
+    if (ln !== undefined) summary.last_locator_name = ln;
+    map.set(id, summary);
   }
   return map;
 }

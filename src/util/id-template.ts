@@ -6,9 +6,9 @@
  * `kebab()` so that German umlauts and other common Latin diacritics
  * survive as readable letters instead of becoming `-`.
  *
- * - `ä/ö/ü/Ä/Ö/Ü` → `ae/oe/ue` (German convention, not bare `a/o/u`)
- * - `ß` → `ss`
- * - everything else with a Latin base (`é`, `ñ`, `ç`, ...) → its base letter
+ * - `ä/ö/ü/Ä/Ö/Ü` to `ae/oe/ue` (German convention, not bare `a/o/u`)
+ * - `ß` to `ss`
+ * - everything else with a Latin base (`é`, `ñ`, `ç`, ...) to its base letter
  *   via `NFD`-decomposition + diacritic strip
  */
 function transliterate(input: string): string {

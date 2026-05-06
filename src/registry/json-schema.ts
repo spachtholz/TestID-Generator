@@ -1,5 +1,5 @@
 /**
- * JSON Schema for the testid registry (FR-2.5).
+ * JSON Schema for the testid registry.
  *
  * Exported as a plain object so it can be dropped directly into Ajv:
  *

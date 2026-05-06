@@ -25,7 +25,7 @@ describe('tagTemplateSource', () => {
 
     expect(Object.keys(out.entries)).toContain('login-form__input--email');
     expect(Object.keys(out.entries)).toContain('login-form__input--password');
-    // "Sign in" button - FR-1.6 rule 6 (text content)
+    // "Sign in" button - matched via static text content
     expect(Object.keys(out.entries)).toContain('login-form__button--sign-in');
     // Tagged template must contain the injected attribute
     expect(out.tagged).toContain(`data-testid="login-form__input--email"`);
@@ -34,7 +34,7 @@ describe('tagTemplateSource', () => {
     expect(out.tagged).toContain('{{ errorMessage() }}');
   });
 
-  it('respects existing data-testid (FR-1.3)', async () => {
+  it('respects existing data-testid', async () => {
     const source = await fixture('user-settings.component.html');
     const out = tagTemplateSource(source, {
       componentName: 'user-settings',
@@ -50,7 +50,7 @@ describe('tagTemplateSource', () => {
     expect(Object.keys(out.entries)).toContain('user-settings__button--preset-cancel');
   });
 
-  it('emits dynamic_children for PrimeNG dropdown + calendar + multiselect (FR-1.8)', async () => {
+  it('emits dynamic_children for PrimeNG dropdown + calendar + multiselect', async () => {
     const source = await fixture('order-form.component.html');
     const out = tagTemplateSource(source, {
       componentName: 'order-form',
@@ -68,7 +68,7 @@ describe('tagTemplateSource', () => {
     expect(calendar?.dynamic_children?.addressing).toContain('by_date');
   });
 
-  it('is deterministic: two runs produce the same output (NFR-3)', async () => {
+  it('is deterministic: two runs produce the same output', async () => {
     const source = await fixture('order-form.component.html');
     const a = tagTemplateSource(source, {
       componentName: 'order-form',
@@ -199,7 +199,7 @@ describe('runTagger - verbose + override warnings', () => {
     // v2: developer adds an aria-label that would make the tagger choose a
     // DIFFERENT id (aria-label is a higher-priority fingerprint source than
     // text content), but they pin the old string by hand. Now the existing
-    // id no longer matches what the tagger would produce → source=manual.
+    // id no longer matches what the tagger would produce to source=manual.
     await fs.writeFile(
       path.join(workDir, 'src', 'hello.component.html'),
       `<button aria-label="Send order now" data-testid="${autoId}" type="submit">Send</button>`

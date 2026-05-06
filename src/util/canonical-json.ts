@@ -1,4 +1,4 @@
-// Sorted-key JSON so equal state produces byte-equal output (NFR-3).
+// Sorted-key JSON so equal state produces byte-equal output.
 // Arrays are sequences, order is preserved.
 
 export function canonicalizeJson(value: unknown): unknown {

@@ -1,5 +1,5 @@
-// Deterministic id generator (FR-1.7 / 1.9). Placeholders: {component},
-// {element}, {key}, {tag}, {hash}, {hash:-}. Unknown placeholders render as-is.
+// Deterministic id generator. Placeholders: {component}, {element}, {key},
+// {tag}, {hash}, {hash:-}. Unknown placeholders render as-is.
 
 import { createHash } from 'node:crypto';
 import { kebab, renderIdTemplate } from '../util/id-template.js';

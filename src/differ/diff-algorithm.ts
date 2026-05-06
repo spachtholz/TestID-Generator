@@ -1,4 +1,4 @@
-// Diff two registries into unchanged/added/removed/renamed/modified (FR-3.x).
+// Diff two registries into unchanged/added/removed/renamed/modified.
 // Rename detection uses best-of-best similarity matching with a threshold.
 
 import type { Registry, RegistryEntry } from '../registry/index.js';
@@ -171,7 +171,7 @@ export function diffRegistries(
     removed.push({ id: oldId, component: entry.component, fingerprint: entry.fingerprint });
   }
 
-  // Deterministic output ordering (NFR-3).
+  // Deterministic output ordering.
   unchanged.sort((a, b) => a.id.localeCompare(b.id));
   modified.sort((a, b) => a.id.localeCompare(b.id));
   renamed.sort((a, b) => a.old_id.localeCompare(b.old_id));
@@ -217,10 +217,10 @@ function round3(n: number): number {
 }
 
 /**
- * Translate a diff into a process exit code per FR-3.5.
- *   0 → no changes, or only `added`
- *   1 → something changed that requires review (removed / renamed / modified)
- *   2 → registry error (raised by the caller, not here)
+ * Translate a diff into a process exit code.
+ *   0 to no changes, or only `added`
+ *   1 to something changed that requires review (removed / renamed / modified)
+ *   2 to registry error (raised by the caller, not here)
  */
 export function exitCodeForDiff(diff: DiffResult): 0 | 1 {
   if (

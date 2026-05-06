@@ -1,5 +1,5 @@
 // Component-path disambiguation in the tagger. Two templates that share a
-// basename — common in monorepos with `apps/{name}/...` layouts — must not
+// basename - common in monorepos with `apps/{name}/...` layouts - must not
 // produce colliding testids in the registry, otherwise the second app's
 // entry silently overwrites the first.
 
@@ -37,7 +37,7 @@ describe('runTagger - componentNaming', () => {
     const ids = Object.keys(reg!.entries);
     // legacy: both write `dialog__button--confirm` and one overwrites the
     // other in the registry map. We see exactly ONE entry for the colliding
-    // testid — that's the bug we want users to opt out of.
+    // testid - that's the bug we want users to opt out of.
     expect(ids).toContain('dialog__button--confirm');
     const collidingEntries = ids.filter((id) => id === 'dialog__button--confirm');
     expect(collidingEntries.length).toBe(1);
@@ -86,7 +86,7 @@ describe('runTagger - componentNaming', () => {
     await runTagger(config, { cwd: workDir });
     const reg = await loadLatestRegistry(path.join(workDir, 'test-artifacts/testids'));
     const ids = Object.keys(reg!.entries);
-    // sidebar is unique → keeps the bare `sidebar__…` slug
+    // sidebar is unique to keeps the bare `sidebar__…` slug
     expect(ids.some((id) => id.startsWith('sidebar__'))).toBe(true);
     expect(ids.some((id) => id.startsWith('admin-sidebar__'))).toBe(false);
   });

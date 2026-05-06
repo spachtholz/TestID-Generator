@@ -8,7 +8,7 @@ import { loadLatestRegistry } from '../src/registry/index.js';
 
 /**
  * Regression: when collisionStrategy='hash-suffix' rewrites a colliding id, the
- * second generateId call must honour the user's idFormat — not silently fall
+ * second generateId call must honour the user's idFormat - not silently fall
  * back to DEFAULT_ID_FORMAT.
  */
 describe('tagger.idFormat under collisions', () => {
@@ -57,7 +57,7 @@ describe('tagger.idFormat under collisions', () => {
     expect(buttonIds.length).toBe(3);
     // Hash-suffix strategy treats the whole colliding group uniformly: every
     // member gets the hash suffix, including the first one. This is more
-    // honest than the legacy "first wins bare, rest get hash" — re-running
+    // honest than the legacy "first wins bare, rest get hash" - re-running
     // after deleting the first button no longer renames the other twos' ids.
     for (const id of buttonIds) {
       expect(id).toMatch(/^tid--order--button-[0-9a-f]{6}$/);
@@ -70,7 +70,7 @@ describe('tagger.idFormat under collisions', () => {
       include: ['**/*.component.html'],
       registryDir,
       testConfigurationOnly: false,
-      // No {hash} / {hash:-} / {disambiguator} placeholder — the auto
+      // No {hash} / {hash:-} / {disambiguator} placeholder - the auto
       // strategy's append-`--N` fallback should still produce unique ids.
       idFormat: '{component}__{element}',
       collisionStrategy: 'auto'
@@ -162,7 +162,7 @@ describe('tagger.idFormat under collisions', () => {
 
   it('auto strategy resolves identical-fingerprint groups via sibling-index', async () => {
     // Same three identical buttons, but auto picks sibling-index first which
-    // doesn't depend on the fingerprint differing — assigns --1/--2/--3.
+    // doesn't depend on the fingerprint differing - assigns --1/--2/--3.
     const compDir = path.join(cwd, 'src', 'app', 'order');
     await fs.writeFile(
       path.join(compDir, 'order.component.html'),

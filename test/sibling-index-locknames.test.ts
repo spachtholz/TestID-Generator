@@ -46,7 +46,7 @@ describe('sibling-index strategy + lockNames continuity', () => {
   }
 
   it('preserves Robot variable name when a sibling is inserted before the locked element', async () => {
-    // Initial template: 2 identical buttons → sibling-index --1 / --2.
+    // Initial template: 2 identical buttons to sibling-index --1 / --2.
     await writeTemplate(`<div>
   <button>Same</button>
   <button>Same</button>
@@ -67,7 +67,7 @@ describe('sibling-index strategy + lockNames continuity', () => {
     const v2Before = reg!.entries['order__button--same--2']!.locator_name;
     expect(v2Before).toBeTruthy();
 
-    // Insert a NEW button at the top — old "--1" / "--2" become "--2" / "--3".
+    // Insert a NEW button at the top - old "--1" / "--2" become "--2" / "--3".
     await writeTemplate(`<div>
   <button>Same</button>
   <button>Same</button>
@@ -80,7 +80,7 @@ describe('sibling-index strategy + lockNames continuity', () => {
     reg = await loadLatestRegistry(registryDir);
 
     // The inserted-at-top button got '--1' (in source order). The originally
-    // tagged HTML still carries the same testids it was written with — so the
+    // tagged HTML still carries the same testids it was written with - so the
     // formerly-"--2" element retains its testid (no source rewrite happened
     // because the existing testid is still valid). Robot variable carries
     // through unchanged.
@@ -111,7 +111,7 @@ describe('sibling-index strategy + lockNames continuity', () => {
     const oldVar = reg!.entries[oldId]!.locator_name;
     expect(oldVar).toBeTruthy();
 
-    // Rename label → fingerprint changes → testid changes → rename-detection
+    // Rename label to fingerprint changes to testid changes to rename-detection
     // moves locator_name onto the new entry.
     await writeTemplate(`<div>
   <button aria-label="Sichern">x</button>

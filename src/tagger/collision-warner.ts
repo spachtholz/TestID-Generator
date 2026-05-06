@@ -24,7 +24,7 @@ export interface CollisionWarning {
    * fingerprint is the artifact that needs to differ.
    */
   fingerprint: string;
-  /** Snapshot of all extracted semantic data — used by the diagnostic dump. */
+  /** Snapshot of all extracted semantic data - used by the diagnostic dump. */
   semantic?: Record<string, unknown>;
   /** Set only for 'collision-group-size-changed' so the formatter can tell. */
   previousGroupSize?: number;

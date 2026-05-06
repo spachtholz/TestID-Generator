@@ -16,7 +16,7 @@ function firstElement(source: string, tagName: string): VisitedElement {
 }
 
 describe('generateFingerprint', () => {
-  it('prefers formcontrolname over placeholder (FR-1.6)', () => {
+  it('prefers formcontrolname over placeholder', () => {
     const el = firstElement(
       `<input formcontrolname="email" placeholder="Your email" type="email" />`,
       'input'

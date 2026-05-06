@@ -19,6 +19,7 @@ import {
 import { mergeLocatorModule } from './merge.js';
 import { resolveComponentNames, type ComponentNamingMode } from './component-naming.js';
 import type {
+  CrossFileCollision,
   GenerateLocatorsOptions,
   GenerateLocatorsResult,
   LocatorEntry,
@@ -42,6 +43,8 @@ export async function generateLocators(
 ): Promise<GenerateLocatorsResult> {
   const attributeName = options.attributeName ?? 'data-testid';
   const xpathPrefix = options.xpathPrefix ?? 'xpath:';
+  const cssPrefix = options.cssPrefix ?? 'css=';
+  const selectorEngine = options.selectorEngine ?? 'xpath';
   const variableFormat = options.variableFormat ?? DEFAULT_VARIABLE_FORMAT;
   const mode = resolveMode(options);
   const naming: ComponentNamingMode = options.componentNaming ?? 'basename';
@@ -64,6 +67,8 @@ export async function generateLocators(
     registry,
     attributeName,
     xpathPrefix,
+    cssPrefix,
+    selectorEngine,
     variableFormat,
     labels,
     lockNames,
@@ -89,10 +94,12 @@ export async function generateLocators(
     await fs.writeFile(options.registryPath, serializeRegistry(registry), 'utf8');
   }
 
+  const crossFileCollisions = detectCrossFileCollisions(modules);
   const result: GenerateLocatorsResult = {
     modules,
     writtenPaths,
-    registryWritten: registryMutated && !!options.registryPath
+    registryWritten: registryMutated && !!options.registryPath,
+    crossFileCollisions
   };
   if (options.migrationReport) {
     result.migrationReport = await buildMigrationReport({
@@ -104,6 +111,33 @@ export async function generateLocators(
     });
   }
   return result;
+}
+
+/**
+ * Group every emitted variable name by its (variable, component) tuple
+ * across all modules. Any variable that lives in 2+ components becomes a
+ * collision - Robot's `Variables` import resolves by Python name only, so
+ * the second import silently overrides the first when both are present in
+ * a suite. Surfacing the list lets the CLI warn (and CI break, if desired).
+ */
+function detectCrossFileCollisions(
+  modules: readonly LocatorModule[]
+): CrossFileCollision[] {
+  const byName = new Map<string, Set<string>>();
+  for (const mod of modules) {
+    for (const entry of mod.entries) {
+      const set = byName.get(entry.variable) ?? new Set<string>();
+      set.add(mod.component);
+      byName.set(entry.variable, set);
+    }
+  }
+  const out: CrossFileCollision[] = [];
+  for (const [variable, components] of byName) {
+    if (components.size < 2) continue;
+    out.push({ variable, components: [...components].sort() });
+  }
+  out.sort((a, b) => a.variable.localeCompare(b.variable));
+  return out;
 }
 
 function regenerateLocatorNames(
@@ -190,6 +224,8 @@ function buildModules(args: {
   registry: Registry;
   attributeName: string;
   xpathPrefix: string;
+  cssPrefix: string;
+  selectorEngine: 'xpath' | 'css';
   variableFormat: string;
   labels: Map<string, string>;
   lockNames: boolean;
@@ -200,6 +236,8 @@ function buildModules(args: {
     registry,
     attributeName,
     xpathPrefix,
+    cssPrefix,
+    selectorEngine,
     variableFormat,
     labels,
     lockNames,
@@ -212,6 +250,8 @@ function buildModules(args: {
     const locator = buildLocatorEntry(testid, {
       attributeName,
       xpathPrefix,
+      cssPrefix,
+      selectorEngine,
       variableFormat,
       entry,
       componentLabel,
@@ -246,7 +286,7 @@ function buildModules(args: {
 
 function isoDateOnly(timestamp: string): string {
   // Tolerate `2026-05-05T10:00:00Z` and bare `2026-05-05` alike. Anything
-  // that doesn't start with a YYYY-MM-DD prefix is dropped silently — better
+  // that doesn't start with a YYYY-MM-DD prefix is dropped silently - better
   // than emitting a malformed comment.
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(timestamp);
   return match ? match[1]! : '';
@@ -283,7 +323,7 @@ function disambiguateVariableNames(
 
 /** Frozen-vs-frozen collisions can only come from a manual edit or buggy
  * prior run; the later (by testid) entry takes a numeric suffix so neither
- * row is dropped. No semantic rewriting — the persisted name is the contract. */
+ * row is dropped. No semantic rewriting - the persisted name is the contract. */
 function claimWithSuffixFallback(
   entries: readonly LocatorEntry[],
   claimed: Set<string>,

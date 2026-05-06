@@ -56,7 +56,7 @@ describe('diffRegistries', () => {
         fingerprint: 'input|formcontrolname=quantity',
         tag: 'input'
       }),
-      // renamed: p-dropdown → p-select with same semantics
+      // renamed: p-dropdown to p-select with same semantics
       'order-form__select--customer': mkEntry({
         fingerprint: 'p-select|formcontrolname=customer|placeholder=Kunde wählen',
         tag: 'p-select'
@@ -151,7 +151,7 @@ describe('report output', () => {
       })
     });
     const md = renderDiffMarkdown(diffRegistries(oldReg, newReg));
-    expect(md).toContain('# Testid Registry Diff: v1 → v2');
+    expect(md).toContain('# Testid Registry Diff: v1 to v2');
     expect(md).toContain('## Summary');
     expect(md).toContain('## Renamed');
     expect(md).toContain('order-form__dropdown--customer');

@@ -266,7 +266,7 @@ describe('structural directives on parent <ng-template>', () => {
     );
     const a = fpFor(hits[0]!, rootNodes);
     // Angular splits *ngFor into a marker `ngFor` (empty) plus the actual
-    // collection binding `ngForOf` — we capture the latter.
+    // collection binding `ngForOf` - we capture the latter.
     expect(a.semantic.structural_directives.ngforof).toBe('orders');
   });
 
@@ -371,7 +371,7 @@ describe('Surrounding context: reusable components', () => {
     );
     const a = fpFor(hits[0]!, rootNodes);
     const b = fpFor(hits[1]!, rootNodes);
-    // Both sit inside a <form> — section boundary stops the upward walk
+    // Both sit inside a <form> - section boundary stops the upward walk
     // before the page-level heading is reached, so neither inherits it.
     // The two are still indistinguishable, which is the *correct* signal
     // back to the developer that this template needs explicit anchors.

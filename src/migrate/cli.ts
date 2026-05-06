@@ -101,6 +101,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     applyResult = await applyRenames({
       robotDir: opts.robotDir,
       renames: renamesMap,
+      fileRenames: plan.fileRenames,
       dryRun: !opts.apply
     });
   } catch (err) {
@@ -116,6 +117,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     orphanHits,
     filesChanged: applyResult.filesChanged,
     occurrencesChanged: applyResult.occurrencesChanged,
+    pathRewrites: applyResult.pathRewrites,
     dryRun: !opts.apply,
     robotDir: opts.robotDir
   });

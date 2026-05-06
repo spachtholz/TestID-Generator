@@ -6,16 +6,28 @@ export interface LocatorSnapshot {
   byTestid: Map<string, string>;
   /** variable name -> testid (for collision/conflict detection) */
   byVariable: Map<string, string>;
+  /**
+   * testid -> source file basename (e.g. `order.py`). Used by the migration
+   * planner to detect when a testid moves between modules and a Robot
+   * `Variables` import has to follow the rename.
+   */
+  fileByTestid: Map<string, string>;
   /** absolute paths of the .py files we read */
   sourceFiles: string[];
 }
 
-const MANAGED_LINE = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"[^"]*\[@[\w-]+='([^']+)'\][^"]*"\s*#\s*testid-managed\s*$/;
+// Matches both selector engines:
+//   xpath: `xpath://*[@data-testid='value']`
+//   css:   `css=[data-testid='value']`
+// And tolerates the optional `# testid-managed | YYYY-MM-DD` date trailer.
+const MANAGED_LINE =
+  /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"[^"]*\[(?:@)?[\w-]+='([^']+)'\][^"]*"\s*#\s*testid-managed(?:\s*\|\s*\d{4}-\d{2}-\d{2})?\s*$/;
 
 export async function loadLocatorSnapshot(dir: string): Promise<LocatorSnapshot> {
   const files = await collectPyFiles(dir);
   const byTestid = new Map<string, string>();
   const byVariable = new Map<string, string>();
+  const fileByTestid = new Map<string, string>();
 
   for (const file of files) {
     const text = await fs.readFile(file, 'utf8');
@@ -26,10 +38,11 @@ export async function loadLocatorSnapshot(dir: string): Promise<LocatorSnapshot>
       const testid = m[2]!;
       byTestid.set(testid, variable);
       byVariable.set(variable, testid);
+      fileByTestid.set(testid, path.basename(file));
     }
   }
 
-  return { byTestid, byVariable, sourceFiles: files };
+  return { byTestid, byVariable, fileByTestid, sourceFiles: files };
 }
 
 async function collectPyFiles(dir: string): Promise<string[]> {

@@ -1,4 +1,4 @@
-// Versioned registry writer (FR-2.2 / 2.3 / 2.4).
+// Versioned registry writer.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -181,7 +181,7 @@ export interface ManualOverrideEvent {
   previousVersion: number;
 }
 
-/** Detect `generated` → `manual` flips; the reverse is not interesting. */
+/** Detect `generated` to `manual` flips; the reverse is not interesting. */
 export function detectManualOverrideEvents(
   previous: Registry | null,
   merged: Record<string, RegistryEntry>

@@ -144,7 +144,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     const unified = await loadTestidConfig(opts.config, opts.cwd);
     locatorRenameThreshold = unified.config.locators.renameThreshold;
   } catch {
-    // fall through — merge will use its default
+    // fall through - merge will use its default
   }
 
   try {
@@ -179,7 +179,7 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       )
     );
     if (result.registryPath) {
-      process.stdout.write(pc.gray(`[testid-tagger] registry → ${result.registryPath}\n`));
+      process.stdout.write(pc.gray(`[testid-tagger] registry to ${result.registryPath}\n`));
     }
     return 0;
   } catch (err) {

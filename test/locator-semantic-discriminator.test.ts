@@ -149,7 +149,7 @@ describe('locator-name semantic discriminator', () => {
   });
 
   it('falls back to _N when no semantic field can split the group', async () => {
-    // Two entries with byte-identical semantics — only the testid hash differs.
+    // Two entries with byte-identical semantics - only the testid hash differs.
     // Nothing in the snapshot can split them, so the legacy numeric suffix
     // takes over.
     const registry: Registry = {
@@ -171,7 +171,7 @@ describe('locator-name semantic discriminator', () => {
     const registry: Registry = {
       ...createEmptyRegistry(2, '2026-04-17T11:00:00Z'),
       entries: {
-        // Older entry — already locked under the bare `save`.
+        // Older entry - already locked under the bare `save`.
         'order__button--save-aaaa': baseEntry({
           fingerprint: 'fp-A',
           locator_name: 'order_nativeButton_save',
@@ -251,7 +251,7 @@ describe('locator-name semantic discriminator', () => {
     await generateLocators(registry, { outDir, lockNames: true });
     const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
 
-    // No `_save_save` redundancy — both entries are truly identical for our
+    // No `_save_save` redundancy - both entries are truly identical for our
     // purposes, so the numeric suffix takes over.
     expect(py).not.toMatch(/save_save\b/);
     expect(py).toMatch(/^order_nativeButton_save\s*=/m);
@@ -308,9 +308,110 @@ describe('locator-name semantic discriminator', () => {
     expect(py).not.toMatch(/_(\d)\b/);
   });
 
-  it('asymmetric child_shape: one wrapper has children, the other is empty — both get readable suffixes', async () => {
-    // Real-world case the user flagged: two structurally similar wrappers,
-    // one filled with content, one self-closing/empty. Strict pass rejects
+  it('walks the fingerprint string when the first divergence is in css_class', async () => {
+    // Two buttons with identical text/aria/handlers - only the CSS class
+    // differs. The fingerprint encodes that as `class=primary` vs
+    // `class=secondary`. The fingerprint-walk pass must pick the class value
+    // up directly so the suffix is `_primary` / `_secondary`, not `_2`.
+    const registry: Registry = {
+      ...createEmptyRegistry(1, '2026-05-05T10:00:00Z'),
+      entries: {
+        'order__button--save-aaaa': baseEntry({
+          fingerprint:
+            'button|text=Save|class=primary',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Save',
+            type: null,
+            css_classes: ['primary']
+          }
+        }),
+        'order__button--save-bbbb': baseEntry({
+          fingerprint:
+            'button|text=Save|class=secondary',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Save',
+            type: null,
+            css_classes: ['secondary']
+          }
+        })
+      }
+    };
+
+    await generateLocators(registry, { outDir, lockNames: true });
+    const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
+
+    expect(py).toContain('order_nativeButton_save_primary');
+    expect(py).toContain('order_nativeButton_save_secondary');
+    expect(py).not.toMatch(/order_nativeButton_save_2\b/);
+  });
+
+  it('walks past shared fingerprint prefix to the first diverging field', async () => {
+    // Three siblings share `text=Save` and `event.click=submit`, then
+    // diverge in `attr.severity`. The walk skips the matching prefix and
+    // picks severity values as the suffix source.
+    const registry: Registry = {
+      ...createEmptyRegistry(1, '2026-05-05T10:00:00Z'),
+      entries: {
+        'order__button--save-1111': baseEntry({
+          fingerprint:
+            'button|text=Save|event.click=submit|attr.severity=info',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Save',
+            type: null,
+            event_handlers: { click: 'submit' },
+            static_attributes: { severity: 'info' }
+          }
+        }),
+        'order__button--save-2222': baseEntry({
+          fingerprint:
+            'button|text=Save|event.click=submit|attr.severity=warning',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Save',
+            type: null,
+            event_handlers: { click: 'submit' },
+            static_attributes: { severity: 'warning' }
+          }
+        }),
+        'order__button--save-3333': baseEntry({
+          fingerprint:
+            'button|text=Save|event.click=submit|attr.severity=danger',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Save',
+            type: null,
+            event_handlers: { click: 'submit' },
+            static_attributes: { severity: 'danger' }
+          }
+        })
+      }
+    };
+
+    await generateLocators(registry, { outDir, lockNames: true });
+    const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
+
+    expect(py).toContain('order_nativeButton_save_info');
+    expect(py).toContain('order_nativeButton_save_warning');
+    expect(py).toContain('order_nativeButton_save_danger');
+    expect(py).not.toMatch(/_(\d)\b/);
+  });
+
+  it('asymmetric child_shape: one wrapper has children, the other is empty - both get readable suffixes', async () => {
+    // Asymmetric case: two structurally similar wrappers, one filled with
+    // content, one self-closing/empty. Strict pass rejects
     // child_shape because the empty side returns undefined; the loose pass
     // ('none' sentinel) lets the field disambiguate so neither member has
     // to fall through to the numeric/hash suffix.
@@ -355,9 +456,64 @@ describe('locator-name semantic discriminator', () => {
     await generateLocators(registry, { outDir, lockNames: true });
     const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
 
-    expect(py).toContain('order_domDiv_card_h3AdressePHauptstr12');
+    // Compact form: the first diverging child position wins, not the full
+    // chain. A's first child differs from B's empty side at position 0.
+    expect(py).toContain('order_domDiv_card_h3Adresse');
     expect(py).toContain('order_domDiv_card_none');
     expect(py).not.toMatch(/order_domDiv_card_2\b/);
+    // Full chain must NOT appear - that was the readability problem.
+    expect(py).not.toContain('h3AdressePHauptstr12');
+  });
+
+  it('compacts child_shape to the first diverging child when prefixes match', async () => {
+    // Both wrappers start with `h3:title` and `p:subtitle`, then diverge at
+    // position 2. The compact suffix uses just `img:logo` / `span:badge`,
+    // not the full `h3TitlePSubtitleImgLogo` chain.
+    const registry: Registry = {
+      ...createEmptyRegistry(1, '2026-05-05T10:00:00Z'),
+      entries: {
+        'order__div--card-aaaa': {
+          component: 'src/order.component.html',
+          tag: 'div',
+          element_type: 'dom_div',
+          fingerprint: 'fp-A',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Card',
+            type: null,
+            child_shape: ['h3:title', 'p:subtitle', 'img:logo']
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        },
+        'order__div--card-bbbb': {
+          component: 'src/order.component.html',
+          tag: 'div',
+          element_type: 'dom_div',
+          fingerprint: 'fp-B',
+          semantic: {
+            formcontrolname: null,
+            aria_label: null,
+            placeholder: null,
+            text_content: 'Card',
+            type: null,
+            child_shape: ['h3:title', 'p:subtitle', 'span:badge']
+          },
+          first_seen_version: 1,
+          last_seen_version: 1
+        }
+      }
+    };
+
+    await generateLocators(registry, { outDir, lockNames: true });
+    const py = await fs.readFile(path.join(outDir, 'order.py'), 'utf8');
+
+    expect(py).toContain('order_domDiv_card_imgLogo');
+    expect(py).toContain('order_domDiv_card_spanBadge');
+    // The shared prefix (h3Title, pSubtitle) must NOT leak into the suffix.
+    expect(py).not.toMatch(/h3Title|pSubtitle/);
   });
 
   it('persists the semantically-discriminated name back to the registry under lockNames', async () => {

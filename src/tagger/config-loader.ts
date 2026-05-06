@@ -1,4 +1,4 @@
-// Tagger config loader (FR-1.4, NFR-6). JSON/MJS/JS/TS all supported.
+// Tagger config loader. JSON/MJS/JS/TS all supported.
 
 import * as path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -82,14 +82,14 @@ export const TaggerConfigSchema = z.object({
   hashAlgorithm: z.enum(['sha256', 'sha1', 'md5']).default('sha256'),
   /**
    * How to disambiguate two elements that produce the same semantic id.
-   * - 'auto'          — try sibling-index first (`--1`/`--2`, readable),
+   * - 'auto'          - try sibling-index first (`--1`/`--2`, readable),
    *                     fall back to hash if the format has no slot for it.
    *                     Recommended default for new projects.
-   * - 'sibling-index' — always use the in-source sibling index `--N`. Stable
+   * - 'sibling-index' - always use the in-source sibling index `--N`. Stable
    *                     across re-runs but reshuffles when colliding siblings
    *                     are added/removed.
-   * - 'hash-suffix'   — append `{hash}` to make it unique. Old behaviour.
-   * - 'error'         — throw on the first collision.
+   * - 'hash-suffix'   - append `{hash}` to make it unique. Old behaviour.
+   * - 'error'         - throw on the first collision.
    */
   collisionStrategy: z
     .enum(['auto', 'sibling-index', 'hash-suffix', 'error'])
@@ -136,10 +136,10 @@ export const TaggerConfigSchema = z.object({
   alwaysHash: z.boolean().default(false),
   /**
    * How to derive the `{component}` slug when several templates share a basename.
-   * - 'basename'      — use the basename as-is (legacy behavior, may collide)
-   * - 'basename-strict' — fail loudly when basenames collide
-   * - 'disambiguate'  — prefix the colliding paths' uncommon segments
-   *                     (`apps/admin/dialog.component.html` → `admin-dialog`)
+   * - 'basename'      - use the basename as-is (legacy behavior, may collide)
+   * - 'basename-strict' - fail loudly when basenames collide
+   * - 'disambiguate'  - prefix the colliding paths' uncommon segments
+   *                     (`apps/admin/dialog.component.html` to `admin-dialog`)
    */
   componentNaming: z
     .enum(['basename', 'basename-strict', 'disambiguate'])

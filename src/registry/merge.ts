@@ -69,7 +69,7 @@ export function mergeEntriesWithHistory(
 
   // Rename-aware locator_name carry-over. When a fingerprint-relevant field
   // changes (aria-label rewording, formcontrolname rename), the regenerated
-  // testid string no longer matches the previous key — the merge above
+  // testid string no longer matches the previous key - the merge above
   // classifies it as 'new' and the old entry becomes 'removed'. Walk the
   // new entries once more and hand down the removed entry's locator_name
   // whenever the two look semantically close.
@@ -144,7 +144,7 @@ function continueCarryOver(
     last_generated_at: carried.last_generated_at,
     generation_history: carried.generation_history ?? [carried.first_seen_version]
   };
-  // Preserve the frozen locator name across tagger runs — incoming entries
+  // Preserve the frozen locator name across tagger runs - incoming entries
   // from the scanner don't carry it, but once gen-locators has written it
   // into the registry it must survive every subsequent carry-over.
   if (carried.locator_name !== undefined) {
@@ -161,17 +161,31 @@ function continueCarryOver(
 
 function continueAfterGap(
   incoming: Omit<RegistryEntry, 'first_seen_version' | 'last_seen_version'>,
-  historical: { first_seen_version: number; generation_history: number[] },
+  historical: {
+    first_seen_version: number;
+    generation_history: number[];
+    last_locator_name?: string;
+  },
   nextVersion: number,
   now: string
 ): RegistryEntry {
-  return {
+  const result: RegistryEntry = {
     ...incoming,
     first_seen_version: historical.first_seen_version,
     last_seen_version: nextVersion,
     last_generated_at: now,
     generation_history: [...historical.generation_history, nextVersion]
   };
+  // Re-attach the locator_name from the snapshot in which this id last
+  // appeared. Without this, an id that was absent for one run (e.g. inside
+  // an `*ngIf` that flipped to false) would come back as a fresh entry
+  // with no frozen name, and gen-locators would re-derive whatever bare
+  // form falls out of the current sibling set - which can shift suffixes
+  // or strip discriminators that downstream Robot tests already depend on.
+  if (historical.last_locator_name !== undefined && incoming.locator_name === undefined) {
+    result.locator_name = historical.last_locator_name;
+  }
+  return result;
 }
 
 function createFresh(

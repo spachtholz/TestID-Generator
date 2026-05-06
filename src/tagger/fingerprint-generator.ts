@@ -1,4 +1,4 @@
-// Fingerprint extraction (FR-1.6, FR-1.9). Deterministic: no paths, no times.
+// Fingerprint extraction. Deterministic: no paths, no times.
 
 import {
   findAttribute,
@@ -12,6 +12,7 @@ import {
   getStructuralDirectives,
   getTagName,
   resolveContextAnchors,
+  type BlockContext,
   type ContextAnchors,
   type VisitedElement
 } from './template-parser.js';
@@ -62,10 +63,10 @@ export type SemanticKey =
   | 'child_shape';
 
 /**
- * Priority order per FR-1.6. The first entry whose extractor returns a
- * non-empty value wins the `primaryKey` slot. Own-element semantic
- * attributes outrank surrounding context, which outranks generic
- * fallbacks like raw text and CSS classes.
+ * Priority order: the first entry whose extractor returns a non-empty
+ * value wins the `primaryKey` slot. Own-element semantic attributes
+ * outrank surrounding context, which outranks generic fallbacks like
+ * raw text and CSS classes.
  */
 const PRIORITY: readonly SemanticKey[] = [
   'formcontrolname',
@@ -96,7 +97,7 @@ const PRIORITY: readonly SemanticKey[] = [
   'value',
   'type',
   'role',
-  // `html_id` is page-unique by spec, so it's a guaranteed disambiguator —
+  // `html_id` is page-unique by spec, so it's a guaranteed disambiguator -
   // but `id` values are often cryptic slugs (`cust-dd`) less readable than
   // a `<label>` text or aria-label. Placed near the bottom so a meaningful
   // semantic field wins the readable `{key}` slot whenever one exists, but
@@ -125,9 +126,9 @@ export interface SemanticSnapshot {
   label: string | null;
   /** Catch-all for any other static attribute (`severity`, `variant`, ...). */
   static_attributes: Record<string, string>;
-  /** Identifier paths read by bound inputs (`[data]="currentOrder"` → `currentOrder`). */
+  /** Identifier paths read by bound inputs (`[data]="currentOrder"` to `currentOrder`). */
   bound_identifiers: Record<string, string>;
-  /** Function names invoked by event handlers (`(click)="saveOrder()"` → `saveOrder`). */
+  /** Function names invoked by event handlers (`(click)="saveOrder()"` to `saveOrder`). */
   event_handlers: Record<string, string>;
   /** String literals fed into `translate`/`transloco`/`t`/`i18n` pipes. */
   i18n_keys: string[];
@@ -151,7 +152,7 @@ function normalise(value: string | null | undefined): string | null {
 
 /**
  * Build a full semantic snapshot (everything we care about) for the registry.
- * Pure function over (element, parent chain, root) — no side effects.
+ * Pure function over (element, parent chain, root) - no side effects.
  */
 export function snapshotSemantics(
   element: VisitedElement,
@@ -162,7 +163,7 @@ export function snapshotSemantics(
   const excludeAttr = options.attributeName ?? 'data-testid';
   const ctx = resolveContextAnchors(element, parents, rootNodes);
 
-  // Static attributes captured into named scalar fields below — anything
+  // Static attributes captured into named scalar fields below - anything
   // that lands here as a key is excluded from the catch-all bucket so it
   // isn't represented twice in the fingerprint.
   const namedStaticFields: ReadonlySet<string> = new Set([
@@ -193,7 +194,7 @@ export function snapshotSemantics(
     // presentation, not identity.
     if (k === 'class' || k === 'style' || k === 'tabindex') continue;
     // *ng* attributes get rewritten onto a synthetic Template parent and
-    // shouldn't reach this path — skip defensively.
+    // shouldn't reach this path - skip defensively.
     if (k.startsWith('*ng') || k.startsWith('*if') || k === 'ngfor' || k === 'ngif') continue;
     staticAttributes[k] = v;
   }
@@ -209,7 +210,9 @@ export function snapshotSemantics(
   const childShape = getChildShape(element);
 
   const structuralDirectives: Record<string, string> = {};
-  for (const [k, v] of getStructuralDirectives(parents)) structuralDirectives[k] = v;
+  for (const [k, v] of getStructuralDirectives(parents, options.blockContext ?? [])) {
+    structuralDirectives[k] = v;
+  }
 
   return {
     formcontrolname: normalise(allStatic.get('formcontrolname')),
@@ -250,11 +253,18 @@ export interface SnapshotOptions {
   /**
    * When true, utility-shaped class names (Tailwind `mt-4`, `flex`, ...) are
    * eligible to win the `css_class` primary-key slot. The fingerprint string
-   * always includes every class regardless — this flag only controls primary-
+   * always includes every class regardless - this flag only controls primary-
    * key selection (which drives the readable `{key}` segment of the testid
    * and the locator variable name).
    */
   includeUtilityClasses?: boolean;
+  /**
+   * Stack of Angular 17+ control-flow block branches enclosing the element.
+   * Provided by `walkElements`. Folded into `structural_directives` so two
+   * elements in different `@if`/`@switch`/`@defer` branches don't collide
+   * just because the block keyword isn't visible in the parent chain.
+   */
+  blockContext?: BlockContext;
 }
 
 /**
@@ -376,7 +386,7 @@ function valueForKey(
 /**
  * Heuristic for "this looks like a Tailwind / utility class, not a
  * semantic one". Used only to demote utility classes when picking the
- * `css_class` primary key — utility classes still go into the fingerprint
+ * `css_class` primary key - utility classes still go into the fingerprint
  * string for full disambiguation.
  */
 function isLikelyUtilityClass(cls: string): boolean {
@@ -448,7 +458,7 @@ function buildFingerprintString(
     parts.push(`on.${k}=${snap.event_handlers[k]}`);
   }
 
-  // CSS classes — sorted set, joined. Includes utility classes; for plain
+  // CSS classes - sorted set, joined. Includes utility classes; for plain
   // wrappers the class string is often the only available signal.
   if (snap.css_classes.length > 0) {
     parts.push(`class=${snap.css_classes.join(' ')}`);
@@ -465,7 +475,7 @@ function buildFingerprintString(
   return parts.join('|');
 }
 
-/** Compute the fingerprint for an element (FR-1.6). */
+/** Compute the fingerprint for an element. */
 export function generateFingerprint(
   element: VisitedElement,
   options: SnapshotOptions = {}

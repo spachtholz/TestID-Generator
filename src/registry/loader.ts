@@ -1,4 +1,4 @@
-// Registry loader + AJV validator (FR-2.5).
+// Registry loader + AJV validator.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';

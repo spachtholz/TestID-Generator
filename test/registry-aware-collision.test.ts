@@ -51,7 +51,7 @@ describe('registry-aware sibling-index resolution', () => {
   }
 
   it('preserves slot ids when a non-identical sibling is inserted in front of the group', async () => {
-    // V1: two identical save buttons → save--1, save--2
+    // V1: two identical save buttons to save--1, save--2
     await runOnCleanSource(
       `<div>
   <button (click)="save()">Save</button>
@@ -65,7 +65,7 @@ describe('registry-aware sibling-index resolution', () => {
     // V2: prepend a Reset button (different fingerprint, doesn't join the
     // collision group). The two Save buttons stay byte-identical. Without
     // registry awareness the resolver would re-number from source position
-    // — same result here, but the carry-over from previous slots is what
+    // - same result here, but the carry-over from previous slots is what
     // we're verifying.
     await runOnCleanSource(
       `<div>
@@ -90,7 +90,7 @@ describe('registry-aware sibling-index resolution', () => {
     );
 
     // V2: append a third identical Save. Source order = [old-1, old-2, NEW].
-    // Registry-aware resolver matches old-1 → --1, old-2 → --2, NEW → --3.
+    // Registry-aware resolver matches old-1 to --1, old-2 to --2, NEW to --3.
     const result = await fs.readFile(templatePath, 'utf8');
     expect(result).not.toContain('data-testid'); // confirm template stayed clean (outputDir mode)
     await runOnCleanSource(
@@ -181,7 +181,7 @@ describe('registry-aware sibling-index resolution', () => {
   });
 
   it('emits a group-size-changed warning when a former collision shrinks to a singleton', async () => {
-    // V1: 3 identical buttons → group of 3.
+    // V1: 3 identical buttons to group of 3.
     await runOnCleanSource(
       `<div>
   <button (click)="save()">Save</button>
@@ -189,7 +189,7 @@ describe('registry-aware sibling-index resolution', () => {
   <button (click)="save()">Save</button>
 </div>`
     );
-    // V2: only 1 left → singleton, gets the bare id without disambiguator.
+    // V2: only 1 left to singleton, gets the bare id without disambiguator.
     await fs.writeFile(
       templatePath,
       `<div>

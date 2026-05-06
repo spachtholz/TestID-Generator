@@ -63,10 +63,24 @@ export const LocatorsConfigSchema = z
      */
     includeGeneratedDate: z.boolean().default(false),
     /**
+     * Selector engine for the emitted Python constants:
+     *   - `xpath` (default) - `xpath://*[@data-testid='...']`
+     *   - `css`             - `css=[data-testid='...']`
+     * CSS mode is faster (5-10x in dense DOMs) and works for both
+     * SeleniumLibrary and the Browser Library; XPath mode is the legacy
+     * default for compatibility with existing suites.
+     */
+    selectorEngine: z.enum(['xpath', 'css']).default('xpath'),
+    /**
+     * Prefix for css selectors. Robot's SeleniumLibrary auto-detects via
+     * `css=`; pass an empty string when the consumer doesn't need a hint.
+     */
+    cssPrefix: z.string().default('css='),
+    /**
      * Last-resort suffix when no semantic field can split a locator-name
      * collision. `numeric` (default) appends `_2`, `_3`, …; `hash` appends a
      * short fingerprint hash that is stable across runs and independent of
-     * sort order — entries keep their suffix even when colliding peers move.
+     * sort order - entries keep their suffix even when colliding peers move.
      */
     collisionSuffix: z.enum(['numeric', 'hash']).default('numeric')
   })

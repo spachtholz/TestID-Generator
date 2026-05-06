@@ -70,6 +70,14 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       '--collision-suffix <mode>',
       'Last-resort suffix mode when no semantic discriminator works: numeric (default, _2/_3) or hash (4-char fingerprint hash, stable across runs)'
     )
+    .option(
+      '--selector-engine <engine>',
+      "Selector engine: xpath (default, xpath://*[@data-testid='...']) or css (css=[data-testid='...'], faster + Browser-Library-tauglich)"
+    )
+    .option(
+      '--css-prefix <prefix>',
+      "Prefix for css selectors. Default 'css='. Pass '' for no prefix."
+    )
     .option('--config <path>', 'Path to testid.config.json')
     .option(
       '--no-overwrite',
@@ -105,6 +113,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     regenerateNames?: boolean;
     includeGeneratedDate?: boolean;
     collisionSuffix?: string;
+    selectorEngine?: string;
+    cssPrefix?: string;
     quiet?: boolean;
   }>();
 
@@ -181,6 +191,25 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
     const regenerateNames = opts.regenerateNames ?? locatorsConfig.regenerateNames;
     const includeGeneratedDate =
       opts.includeGeneratedDate ?? locatorsConfig.includeGeneratedDate;
+
+    // Profile-Stability-Guard: lockNames depends on `last_locator_name` and
+    // `generation_history` surviving across runs. Both fields are stripped
+    // by the `minimal` and (history-wise) `standard` registry profiles, so
+    // running with one of them while lockNames is on silently degrades the
+    // stability promise - every absent-then-restored entry would re-derive
+    // its variable name from scratch instead of inheriting the locked one.
+    const profile = taggerConfig.registry?.profile ?? 'full';
+    if (lockNames && profile !== 'full') {
+      process.stderr.write(
+        pc.yellow(
+          `[testid-gen-locators] WARNING: lockNames is enabled but tagger.registry.profile = "${profile}".\n` +
+          `  This profile drops fields (generation_history${profile === 'minimal' ? ', semantic, locator_name' : ''}) that lockNames relies on for stable\n` +
+          `  Robot variable names across runs. Recommended: set tagger.registry.profile = "full" or remove\n` +
+          `  the lockNames option.\n`
+        )
+      );
+    }
+
     let collisionSuffix: 'numeric' | 'hash' = locatorsConfig.collisionSuffix;
     if (opts.collisionSuffix !== undefined) {
       if (opts.collisionSuffix !== 'numeric' && opts.collisionSuffix !== 'hash') {
@@ -193,6 +222,19 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       }
       collisionSuffix = opts.collisionSuffix;
     }
+    let selectorEngine: 'xpath' | 'css' = locatorsConfig.selectorEngine;
+    if (opts.selectorEngine !== undefined) {
+      if (opts.selectorEngine !== 'xpath' && opts.selectorEngine !== 'css') {
+        process.stderr.write(
+          pc.red(
+            `[testid-gen-locators] Invalid --selector-engine "${opts.selectorEngine}". Valid: xpath, css.\n`
+          )
+        );
+        return 2;
+      }
+      selectorEngine = opts.selectorEngine;
+    }
+    const cssPrefix = opts.cssPrefix ?? locatorsConfig.cssPrefix;
     const result = await generateLocators(registry, {
       outDir: opts.outDir,
       registryPath,
@@ -204,6 +246,8 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
       regenerateNames,
       includeGeneratedDate,
       collisionSuffix,
+      selectorEngine,
+      cssPrefix,
       componentNaming,
       migrationReport: opts.migrationReport === true || opts.reportOut !== undefined
     });
@@ -221,6 +265,24 @@ export async function main(argv: readonly string[] = process.argv): Promise<numb
         process.stdout.write(
           pc.gray(`  (updated ${registryPath} with locked locator names)\n`)
         );
+      }
+    }
+    // Cross-file variable collisions ARE breaking when the affected modules
+    // get imported into the same Robot suite (last import wins, silently).
+    // Always warn - even with --quiet - but on stderr so build pipelines
+    // can grep the line.
+    if (result.crossFileCollisions && result.crossFileCollisions.length > 0) {
+      process.stderr.write(
+        pc.yellow(
+          `[testid-gen-locators] WARNING: ${result.crossFileCollisions.length} variable name(s) collide across components.\n` +
+          `  Robot's Variables import is name-keyed - importing two modules with the same\n` +
+          `  variable in one suite silently overwrites one with the other. Recommended:\n` +
+          `  set componentNaming = "disambiguate" so colliding basenames get distinguishing\n` +
+          `  prefixes from their path.\n`
+        )
+      );
+      for (const c of result.crossFileCollisions) {
+        process.stderr.write(pc.yellow(`    ${c.variable}: ${c.components.join(', ')}\n`));
       }
     }
     if (result.migrationReport) {

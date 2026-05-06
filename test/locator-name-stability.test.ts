@@ -119,7 +119,7 @@ describe('locator-name stability under lockNames', () => {
         }),
         'order__button--save-aaaa': makeEntry({
           fingerprint: 'fp-early'
-          // no locator_name yet — newly arrived
+          // no locator_name yet - newly arrived
         })
       }
     };
@@ -160,7 +160,7 @@ describe('locator-name stability under lockNames', () => {
   });
 
   it('regenerate mode reconciles disambiguated names cleanly', async () => {
-    // User changed variableFormat — regenerate=true forces every entry's
+    // User changed variableFormat - regenerate=true forces every entry's
     // locator_name back to the bare expected. The writeback then makes the
     // disambiguated form (`save_2`) authoritative again.
     const registry: Registry = {

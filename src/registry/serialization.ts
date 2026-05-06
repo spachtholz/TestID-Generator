@@ -166,7 +166,7 @@ function filterEntry(
     out.dynamic_children = entry.dynamic_children;
   }
   // locator_name is always preserved when present. It's state that gen-locators
-  // has explicitly written in, not profile-gated derived data — dropping it on
+  // has explicitly written in, not profile-gated derived data - dropping it on
   // a `minimal` write would silently unfreeze the locator names on next run.
   if (entry.locator_name !== undefined) {
     out.locator_name = entry.locator_name;

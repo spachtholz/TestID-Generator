@@ -108,7 +108,7 @@ function printGlobalHelp(stream: NodeJS.WriteStream = process.stdout): void {
   lines.push('');
   lines.push(pc.bold('Aliases:'));
   for (const [name, entry] of aliasRows()) {
-    lines.push(`  ${pc.gray(name.padEnd(14))}  → ${entry.canonical}`);
+    lines.push(`  ${pc.gray(name.padEnd(14))}  to ${entry.canonical}`);
   }
   lines.push('');
   lines.push(pc.bold('Examples:'));

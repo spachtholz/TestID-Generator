@@ -1,4 +1,4 @@
-// Element detection + shortType mapping (FR-1.2, FR-1.7).
+// Element detection + shortType mapping.
 
 import { DEFAULT_IGNORE_TAGS, type TaggerConfig } from './config-loader.js';
 import {
@@ -213,7 +213,7 @@ export function detectElement(
 }
 
 /* ---------------------------------------------------------------------- *
- * Dynamic-children pattern (FR-1.8)
+ * Dynamic-children pattern
  * ---------------------------------------------------------------------- */
 
 export interface DynamicChildrenPatternSpec {

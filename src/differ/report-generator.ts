@@ -1,14 +1,14 @@
 /**
- * Markdown + JSON report generators (FR-3.2, FR-3.3, NFR-9).
+ * Markdown + JSON report generators.
  *
  * The Markdown output is GitHub/GitLab-PR-comment-compatible: plain tables,
- * no HTML, no JS. Emoji are intentionally omitted (fits user preference).
+ * no HTML, no JS.
  */
 
 import { canonicalizeJson } from '../util/canonical-json.js';
 import type { DiffResult } from './diff-algorithm.js';
 
-/** Serialise the diff to canonical JSON with sorted keys (NFR-3). */
+/** Serialise the diff to canonical JSON with sorted keys. */
 export function renderDiffJson(diff: DiffResult): string {
   return JSON.stringify(canonicalizeJson(diff), null, 2) + '\n';
 }
@@ -16,7 +16,7 @@ export function renderDiffJson(diff: DiffResult): string {
 /** Render a Markdown report suitable for a PR comment. */
 export function renderDiffMarkdown(diff: DiffResult): string {
   const lines: string[] = [];
-  lines.push(`# Testid Registry Diff: v${diff.from_version} → v${diff.to_version}`);
+  lines.push(`# Testid Registry Diff: v${diff.from_version} to v${diff.to_version}`);
   lines.push('');
   lines.push(`_Generated at ${diff.generated_at}_`);
   lines.push('');

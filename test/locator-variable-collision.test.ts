@@ -1,5 +1,5 @@
 // Locator-generator must not silently emit two lines that share the same
-// Python variable name — Robot would only see the last one. Collisions
+// Python variable name - Robot would only see the last one. Collisions
 // are detected during module build and a stable `_2`/`_3` suffix is
 // appended in deterministic testid order.
 
@@ -39,7 +39,7 @@ describe('locator variable-name collision handling', () => {
   });
 
   it('appends _2/_3 when two entries produce the same variable', async () => {
-    // Two distinct testids — but the default variableFormat
+    // Two distinct testids - but the default variableFormat
     // {component}_{element}_{key} produces the same Python identifier for
     // both because the key (text_content="Save") is identical. Without
     // disambiguation Robot would only see the second line.
@@ -79,9 +79,9 @@ describe('locator variable-name collision handling', () => {
     const content = await fs.readFile(path.join(dir, 'order.py'), 'utf8');
 
     // Sorted by testid: '--save', '--save--2', '--save--3'
-    // → '--save'    keeps the bare name
-    // → '--save--2' becomes _2 (the first collision)
-    // → '--save--3' becomes _3 (the second collision)
+    // to '--save'    keeps the bare name
+    // to '--save--2' becomes _2 (the first collision)
+    // to '--save--3' becomes _3 (the second collision)
     expect(content).toContain("order_nativeButton_save = \"xpath://*[@data-testid='order__button--save']\"");
     expect(content).toContain("order_nativeButton_save_2 = \"xpath://*[@data-testid='order__button--save--2']\"");
     expect(content).toContain("order_nativeButton_save_3 = \"xpath://*[@data-testid='order__button--save--3']\"");
@@ -153,7 +153,7 @@ describe('locator variable-name collision handling', () => {
   });
 
   it('does nothing when the variableFormat is already unique', async () => {
-    // {testid} guarantees uniqueness — collision-handler should be a no-op.
+    // {testid} guarantees uniqueness - collision-handler should be a no-op.
     const registry: Registry = {
       ...createEmptyRegistry(1, '2026-04-17T10:00:00Z'),
       entries: {

@@ -1,4 +1,4 @@
-// Thin wrapper around @angular/compiler's template parser (FR-1.5).
+// Thin wrapper around @angular/compiler's template parser.
 // Uses the Angular parser so @if/@for/@switch work on v18+.
 
 import {
@@ -68,17 +68,39 @@ export interface LoopContext {
 }
 
 /**
+ * Marks each Angular 17+ control-flow block branch the visitor descended
+ * into. Equivalent to the `*ngIf`/`*ngSwitchCase` info the legacy template
+ * paths surface via `getStructuralDirectives`, but for the new `@if`/
+ * `@switch`/`@defer`/`@for` block syntax - those blocks aren't elements,
+ * so they don't appear in `parents`, and without this list the wrapped
+ * element loses the branch identity completely. Two `<button>Save</button>`
+ * in different `@if` branches would otherwise hash identically.
+ */
+export interface BlockContextEntry {
+  /** e.g. `@if`, `@else if`, `@else`, `@switch.case`, `@switch.default`,
+   *  `@for`, `@defer`, `@defer.placeholder`, `@defer.loading`, `@defer.error` */
+  readonly name: string;
+  /** Branch expression / case value. Empty when the branch carries no
+   *  expression (e.g. `@else`, `@defer` body). */
+  readonly value: string;
+}
+
+export type BlockContext = readonly BlockContextEntry[];
+
+/**
  * Visitor receives the visited element, the active loop context (if any),
- * and the chain of element parents from the document root down to the
- * direct parent. The chain is empty for top-level elements.
+ * the chain of element parents from the document root down to the direct
+ * parent, and the stack of control-flow block branches enclosing the
+ * element. The chain is empty for top-level elements.
  *
- * `parents` is provided as a fresh array per call; callers may keep a
- * reference but should treat it as immutable.
+ * `parents` and `blockContext` are provided as fresh arrays per call;
+ * callers may keep a reference but should treat them as immutable.
  */
 export type VisitFn = (
   node: VisitedElement,
   loop: LoopContext | null,
-  parents: readonly VisitedElement[]
+  parents: readonly VisitedElement[],
+  blockContext: BlockContext
 ) => void;
 
 /**
@@ -93,11 +115,12 @@ export function walkElements(
   nodes: readonly TmplAstNode[] | undefined,
   visit: VisitFn,
   loop: LoopContext | null = null,
-  parents: readonly VisitedElement[] = []
+  parents: readonly VisitedElement[] = [],
+  blockContext: BlockContext = []
 ): void {
   if (!nodes) return;
   for (const node of nodes) {
-    walkNode(node, visit, loop, parents);
+    walkNode(node, visit, loop, parents, blockContext);
   }
 }
 
@@ -105,49 +128,144 @@ function walkNode(
   node: TmplAstNode,
   visit: VisitFn,
   loop: LoopContext | null,
-  parents: readonly VisitedElement[]
+  parents: readonly VisitedElement[],
+  blockContext: BlockContext
 ): void {
   if (isElementLike(node)) {
     // ng-template wrappers may themselves introduce a loop for their children.
     const childLoop = isTemplateNode(node) ? detectTemplateLoop(node) ?? loop : loop;
-    visit(node, loop, parents);
-    walkElements(node.children, visit, childLoop, [...parents, node]);
+    visit(node, loop, parents, blockContext);
+    walkElements(node.children, visit, childLoop, [...parents, node], blockContext);
     return;
   }
 
   if (isIfBlock(node)) {
-    for (const branch of node.branches) {
-      walkElements(branch.children, visit, loop, parents);
+    for (let i = 0; i < node.branches.length; i++) {
+      const branch = node.branches[i]!;
+      const branchEntry = describeIfBranch(branch, i);
+      walkElements(
+        branch.children, visit, loop, parents,
+        branchEntry ? [...blockContext, branchEntry] : blockContext
+      );
     }
     return;
   }
 
   if (isForLoop(node)) {
     const forLoop: LoopContext = { kind: 'forBlock', label: '@for' };
-    walkElements(node.children, visit, forLoop, parents);
+    const forEntry: BlockContextEntry = {
+      name: '@for',
+      value: readForExpression(node)
+    };
+    walkElements(
+      node.children, visit, forLoop, parents,
+      [...blockContext, forEntry]
+    );
     // the @empty block only renders once, so it's not a loop context
     if (node.empty) {
-      walkElements(node.empty.children, visit, loop, parents);
+      walkElements(
+        node.empty.children, visit, loop, parents,
+        [...blockContext, { name: '@for.empty', value: forEntry.value }]
+      );
     }
     return;
   }
 
   if (isSwitchBlock(node)) {
+    const switchExpr = readNodeExpression(node, 'expression');
     for (const c of node.cases) {
-      walkElements(c.children, visit, loop, parents);
+      const isDefault = readNodeExpression(c, 'expression') === '';
+      const entry: BlockContextEntry = isDefault
+        ? { name: '@switch.default', value: switchExpr }
+        : { name: '@switch.case', value: `${switchExpr}=${readNodeExpression(c, 'expression')}` };
+      walkElements(c.children, visit, loop, parents, [...blockContext, entry]);
     }
     return;
   }
 
   if (isDeferredBlock(node)) {
-    walkElements(node.children, visit, loop, parents);
-    if (node.placeholder) walkElements(node.placeholder.children, visit, loop, parents);
-    if (node.loading) walkElements(node.loading.children, visit, loop, parents);
-    if (node.error) walkElements(node.error.children, visit, loop, parents);
+    const triggers = readDeferTriggers(node);
+    walkElements(
+      node.children, visit, loop, parents,
+      [...blockContext, { name: '@defer', value: triggers }]
+    );
+    if (node.placeholder) walkElements(
+      node.placeholder.children, visit, loop, parents,
+      [...blockContext, { name: '@defer.placeholder', value: triggers }]
+    );
+    if (node.loading) walkElements(
+      node.loading.children, visit, loop, parents,
+      [...blockContext, { name: '@defer.loading', value: triggers }]
+    );
+    if (node.error) walkElements(
+      node.error.children, visit, loop, parents,
+      [...blockContext, { name: '@defer.error', value: triggers }]
+    );
     return;
   }
 
   // Other nodes (Text, BoundText, Comment, Icu, LetDeclaration, ...) have no children.
+}
+
+/**
+ * Describe a single branch of an `@if` block. The first branch is the
+ * `@if`, subsequent branches with an expression are `@else if`, the final
+ * branch with no expression is `@else`.
+ */
+function describeIfBranch(
+  branch: { expression?: unknown; expressionAlias?: unknown },
+  index: number
+): BlockContextEntry | null {
+  const expr = readNodeExpression(branch, 'expression');
+  if (expr) {
+    return { name: index === 0 ? '@if' : '@else if', value: expr };
+  }
+  if (index === 0) return null; // @if with empty expr - should not happen
+  return { name: '@else', value: '' };
+}
+
+/** Pull the source text of an AST expression by reflection on common
+ *  Angular AST shapes (ASTWithSource.source, value.source, …). */
+function readNodeExpression(node: unknown, prop: string): string {
+  if (!node || typeof node !== 'object') return '';
+  const v = (node as Record<string, unknown>)[prop];
+  return readAstSource(v);
+}
+
+function readAstSource(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v !== 'object') return '';
+  // ASTWithSource has `source: string`.
+  const src = (v as { source?: unknown }).source;
+  if (typeof src === 'string' && src.length > 0) return src;
+  // EmptyExpr / ImplicitReceiver have `span.toString()` if available.
+  const span = (v as { span?: { toString?: () => string } }).span;
+  if (span && typeof span.toString === 'function') {
+    const s = span.toString();
+    if (typeof s === 'string') return s;
+  }
+  return '';
+}
+
+function readForExpression(node: TmplAstForLoopBlock): string {
+  // `@for (item of items; track item.id)` - expression is the iterable.
+  const expr = readNodeExpression(node, 'expression');
+  if (expr) return expr;
+  // Fallback: try `item` + `trackBy` if the AST exposes them.
+  return '';
+}
+
+function readDeferTriggers(node: TmplAstDeferredBlock): string {
+  // `@defer (on viewport; when condition)` - triggers/prefetchTriggers are
+  // arrays of trigger objects with their own AST. We just produce a stable
+  // marker so two `@defer` blocks with different trigger sets don't collide.
+  const triggers = (node as unknown as { triggers?: Record<string, unknown> }).triggers;
+  if (triggers && typeof triggers === 'object') {
+    const keys = Object.keys(triggers).sort();
+    if (keys.length > 0) return keys.join(',');
+  }
+  return '';
 }
 
 // PrimeNG pTemplate values that render their body once per item in a collection.
@@ -297,7 +415,7 @@ export function findBoundAttribute(
  * True if the element already carries a testid - either as a plain static
  * attribute (`data-testid="..."`) OR as a runtime binding
  * (`[attr.data-testid]="..."`). Both forms must be respected by the tagger
- * so we don't override a manually-authored binding (FR-1.3-analog).
+ * so we don't override a manually-authored binding.
  */
 export function hasTestidBinding(element: VisitedElement): boolean {
   if (findAttribute(element, 'data-testid')) return true;
@@ -307,7 +425,7 @@ export function hasTestidBinding(element: VisitedElement): boolean {
 
 /**
  * Return the element's immediate static text content - only returns a value
- * if all children are plain `Text` nodes (no interpolation) per FR-1.6 rule 6.
+ * if all children are plain `Text` nodes (no interpolation).
  */
 export function getStaticTextContent(element: VisitedElement): string | null {
   const children = element.children ?? [];
@@ -319,7 +437,7 @@ export function getStaticTextContent(element: VisitedElement): string | null {
     if (isText(child)) {
       out += child.value;
     } else if (isBoundText(child)) {
-      return null; // interpolation present - skip per FR-1.6
+      return null; // interpolation present - skip
     } else if (isElementLike(child)) {
       // element children are fine - we only care about our own text.
       continue;
@@ -345,8 +463,8 @@ export function getTagName(element: VisitedElement): string {
 /**
  * Order is preserved (not sorted) so an icon-then-label row stays distinct
  * from a label-then-icon row even when both children share tags.
- * Extraction is shallow — only the child's own attributes / static text are
- * inspected, no grandchildren — which avoids cascading drift when something
+ * Extraction is shallow - only the child's own attributes / static text are
+ * inspected, no grandchildren - which avoids cascading drift when something
  * deeper in the subtree changes.
  */
 export function getChildShape(element: VisitedElement): string[] {
@@ -395,7 +513,7 @@ function extractShallowChildKey(element: VisitedElement): string | null {
  * Class tokens of the element. Lowercased, deduplicated, alphabetically
  * sorted so re-ordering classes in source doesn't change the fingerprint.
  *
- * All classes are included — utility classes (Tailwind `mt-4`, `flex`) are
+ * All classes are included - utility classes (Tailwind `mt-4`, `flex`) are
  * noisy, but on real-world Angular templates the class string is often the
  * only thing distinguishing two structurally identical wrapper elements.
  */
@@ -416,42 +534,60 @@ export function getCssClasses(element: VisitedElement): string[] {
 /**
  * Angular rewrites `*ngIf="cond"` into `<ng-template [ngIf]="cond">…</ng-template>`,
  * which means the wrapped element loses the directive info from its own
- * attributes. This helper digs into the immediate parent — when it's a
- * synthetic Template node — and pulls the structural-directive raw values
+ * attributes. This helper digs into the immediate parent - when it's a
+ * synthetic Template node - and pulls the structural-directive raw values
  * back out (`ngIf=cond`, `ngForOf=orders`, `ngSwitchCase=...`).
  *
  * Keys are lowercased; values are the raw expression text from source.
  */
 export function getStructuralDirectives(
-  parents: readonly VisitedElement[]
+  parents: readonly VisitedElement[],
+  blockContext: BlockContext = []
 ): Map<string, string> {
   const result = new Map<string, string>();
-  if (parents.length === 0) return result;
-  const direct = parents[parents.length - 1]!;
-  if (!isTemplateNode(direct)) return result;
-  const tmpl = direct as TmplAstTemplate;
-  // templateAttrs entries have `value` as either a plain string (TextAttribute)
-  // or an ASTWithSource (BoundAttribute) — the latter is what `*ngIf="cond"`
-  // produces. Use the raw source text in both cases so we get exactly what
-  // the developer wrote ("cond", "user.isAdmin && !disabled", etc.).
-  for (const attr of tmpl.templateAttrs ?? []) {
-    const name = typeof attr.name === 'string' ? attr.name.toLowerCase() : '';
-    if (!name) continue;
-    const v = readAttrValueText((attr as { value: unknown }).value);
-    if (v) result.set(name, v);
-  }
-  // Bound `[ngIf]="…"` form — same idea. Falls back to '<expr>' marker so the
-  // presence of a directive at least disambiguates from a wrapper-less sibling.
-  for (const input of tmpl.inputs ?? []) {
-    const name = typeof input.name === 'string' ? input.name.toLowerCase() : '';
-    if (!name || result.has(name)) continue;
-    const v = readAttrValueText((input as { value: unknown }).value);
-    if (v) {
-      result.set(name, v);
-    } else {
-      const path = extractDottedPath(input.value);
-      result.set(name, path ?? '<expr>');
+  // Walk every parent looking for synthetic <ng-template> wrappers, not
+  // just the immediate parent. `<ng-container *ngIf>` introduces a non-
+  // template wrapper between the directive and the inner element, which
+  // would otherwise hide the *ngIf entirely. Aggregating up the chain is
+  // also harmless when the immediate parent IS the template - the loop
+  // just stops finding more wrappers at that point.
+  for (const direct of parents) {
+    if (!isTemplateNode(direct)) continue;
+    const tmpl = direct as TmplAstTemplate;
+    // templateAttrs entries have `value` as either a plain string (TextAttribute)
+    // or an ASTWithSource (BoundAttribute) - the latter is what `*ngIf="cond"`
+    // produces. Use the raw source text in both cases so we get exactly what
+    // the developer wrote ("cond", "user.isAdmin && !disabled", etc.).
+    for (const attr of tmpl.templateAttrs ?? []) {
+      const name = typeof attr.name === 'string' ? attr.name.toLowerCase() : '';
+      if (!name || result.has(name)) continue;
+      const v = readAttrValueText((attr as { value: unknown }).value);
+      if (v) result.set(name, v);
     }
+    // Bound `[ngIf]="…"` form - same idea. Falls back to '<expr>' marker so the
+    // presence of a directive at least disambiguates from a wrapper-less sibling.
+    for (const input of tmpl.inputs ?? []) {
+      const name = typeof input.name === 'string' ? input.name.toLowerCase() : '';
+      if (!name || result.has(name)) continue;
+      const v = readAttrValueText((input as { value: unknown }).value);
+      if (v) {
+        result.set(name, v);
+      } else {
+        const path = extractDottedPath(input.value);
+        result.set(name, path ?? '<expr>');
+      }
+    }
+  }
+  // Angular 17+ control-flow blocks (`@if`/`@switch`/`@defer`/`@for`) live
+  // OUTSIDE the parents array - they're not elements. Fold the block
+  // branches into the same map as the legacy structural directives so the
+  // fingerprint string ends up with `struct.@if=cond` tokens; that keeps
+  // a button inside `@if (showAddress)` distinct from one inside
+  // `@if (showBilling)` exactly as it would have been with `*ngIf`.
+  for (const entry of blockContext) {
+    const key = entry.name.toLowerCase();
+    if (result.has(key)) continue;
+    result.set(key, entry.value || '<expr>');
   }
   return result;
 }
@@ -471,7 +607,7 @@ function readAttrValueText(value: unknown): string | null {
  * ---------------------------------------------------------------------- */
 
 /**
- * All statically-authored attributes on the element as `name → value` pairs.
+ * All statically-authored attributes on the element as `name to value` pairs.
  * Names are lowercased. The attribute that holds the testid itself
  * (`attributeName`, default `data-testid`) is excluded so it never feeds
  * back into its own fingerprint.
@@ -493,7 +629,7 @@ export function getAllStaticAttributes(
       result.set(name, attr.value);
     }
   }
-  // [input]="'literal'" — Angular parses the value as a LiteralPrimitive.
+  // [input]="'literal'" - Angular parses the value as a LiteralPrimitive.
   for (const input of element.inputs ?? []) {
     const name = input.name.toLowerCase();
     if (exclude && name === exclude) continue;
@@ -511,7 +647,7 @@ export function getAllStaticAttributes(
 /**
  * For each bound `[input]="expression"`, return the input name mapped to the
  * dotted identifier path the binding reads. Function calls, operations,
- * literals, etc. are skipped — only "this is a variable" expressions are
+ * literals, etc. are skipped - only "this is a variable" expressions are
  * extracted because a renamed variable is a strong, intentional signal.
  *
  * Two-way bindings `[(model)]="value"` are exposed to Angular as a
@@ -524,7 +660,7 @@ export function getBoundIdentifiers(element: VisitedElement): Map<string, string
     const name = input.name.toLowerCase();
     // Skip the `Change`-half of two-way bindings.
     if (name.endsWith('change')) continue;
-    // Skip Angular structural / styling bindings — they generate noise without
+    // Skip Angular structural / styling bindings - they generate noise without
     // distinguishing usage sites.
     if (name === 'ngclass' || name === 'ngstyle' || name === 'ngfor' || name === 'ngif') {
       continue;
@@ -542,7 +678,7 @@ export function getBoundIdentifiers(element: VisitedElement): Map<string, string
 /**
  * For each `(event)="handler(...)"`, return the event name mapped to the
  * function name. Lambdas, assignments, `$event.stopPropagation()`-style
- * meta-calls are skipped — only named function calls count.
+ * meta-calls are skipped - only named function calls count.
  */
 export function getEventHandlerNames(element: VisitedElement): Map<string, string> {
   const result = new Map<string, string>();
@@ -616,7 +752,7 @@ export interface ContextAnchors {
   aria_labelledby_text: string | null;
 }
 
-/** Element + immediate parent chain → surrounding-context anchors. */
+/** Element + immediate parent chain to surrounding-context anchors. */
 export function resolveContextAnchors(
   element: VisitedElement,
   parents: readonly VisitedElement[],
@@ -694,8 +830,8 @@ export function resolveContextAnchors(
     if (isSectionBoundary(parent, tag)) break;
   }
 
-  // preceding heading — search direct sibling list of the immediate parent.
-  // No parent → we're at the root of the template; use the rootNodes themselves.
+  // preceding heading - search direct sibling list of the immediate parent.
+  // No parent to we're at the root of the template; use the rootNodes themselves.
   const siblings = parents.length > 0
     ? (parents[parents.length - 1]!.children ?? [])
     : rootNodes;
@@ -741,7 +877,7 @@ function extractDottedPath(node: unknown): string | null {
       continue;
     }
     if (isCtor(cur, 'ImplicitReceiver', 'ThisReceiver')) {
-      // root of the chain — done
+      // root of the chain - done
       return segments.length > 0 ? segments.join('.') : null;
     }
     return null;
@@ -762,7 +898,7 @@ function extractCallTarget(node: unknown): string | null {
   if (!isCtor(receiver, 'PropertyRead')) return null;
   const r = receiver as AstLike;
   if (!isCtor(r.receiver, 'ImplicitReceiver', 'ThisReceiver')) {
-    // method on a member like `service.save()` — accept and use the method name
+    // method on a member like `service.save()` - accept and use the method name
   }
   return typeof r.name === 'string' ? r.name : null;
 }
@@ -804,7 +940,7 @@ function collectFromExpression(
       if (typeof v === 'string') i18nKeys.push(v);
       return; // don't descend further; the literal is the entire payload
     }
-    // unknown pipe — descend into the input expression so e.g.
+    // unknown pipe - descend into the input expression so e.g.
     // `{{ user.name | uppercase }}` still yields `user.name`.
     collectFromExpression(c.exp, i18nKeys, boundTextPaths);
     return;

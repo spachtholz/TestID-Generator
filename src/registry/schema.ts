@@ -1,9 +1,9 @@
-// Registry schema types (FR-2.1). Also exported as JSON schema in ./json-schema.ts.
+// Registry schema types. Also exported as JSON schema in ./json-schema.ts.
 
 /**
  * Surrounding-context anchors collected by walking up from an element. Used
  * primarily to disambiguate reusable components (`<custom-dropdown>`) when
- * the element itself carries no distinguishing attributes — the wrapping
+ * the element itself carries no distinguishing attributes - the wrapping
  * `<label>`, `<legend>`, `<h*>` or wrapper-component `label`-input becomes
  * the semantic key.
  */
@@ -49,10 +49,10 @@ export interface SemanticAttributes {
   /** Any other static attribute (Angular `[input]="literal"` is normalised in here too). */
   static_attributes?: Record<string, string> | null;
 
-  /** Identifier paths read by bound inputs, e.g. `[data]="currentOrder"` → `currentOrder`. */
+  /** Identifier paths read by bound inputs, e.g. `[data]="currentOrder"` to `currentOrder`. */
   bound_identifiers?: Record<string, string> | null;
 
-  /** Function names invoked by event handlers, e.g. `(click)="saveOrder()"` → `saveOrder`. */
+  /** Function names invoked by event handlers, e.g. `(click)="saveOrder()"` to `saveOrder`. */
   event_handlers?: Record<string, string> | null;
 
   /** String literals fed into translation pipes/functions inside text. */
