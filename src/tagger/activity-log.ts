@@ -108,22 +108,109 @@ function appendSection(
 export interface WriteActivityOptions {
   dir: string;
   report: ActivityReport;
+  /** write activity.v{N}.md (and activity.latest.md if writeLatest). default true */
+  markdown?: boolean;
+  /** write activity.v{N}.json (and activity.latest.json if writeLatest). default true */
+  json?: boolean;
+  /** also write activity.latest.{md,json} alongside the versioned files. default true */
+  writeLatest?: boolean;
+  /** keep only newest N versioned activity files per format; 0 = keep all */
+  retention?: number;
 }
 
 export interface WriteActivityResult {
-  markdownPath: string;
-  jsonPath: string;
+  markdownPath: string | null;
+  jsonPath: string | null;
+  latestMarkdownPath: string | null;
+  latestJsonPath: string | null;
 }
 
-/** Persist `activity.v{N}.md` + `activity.v{N}.json` next to the registry. */
+const VERSIONED_ACTIVITY_PATTERN = /^activity\.v(\d+)\.(md|json)$/;
+
+/**
+ * Persist activity files next to the registry. By default writes
+ * `activity.v{N}.md`, `activity.v{N}.json`, `activity.latest.md` and
+ * `activity.latest.json`. Each format and the latest pointer can be toggled
+ * independently. Older versioned files are pruned when `retention > 0`.
+ */
 export async function writeActivityReport(
   options: WriteActivityOptions
 ): Promise<WriteActivityResult> {
   const { dir, report } = options;
+  const wantMarkdown = options.markdown ?? true;
+  const wantJson = options.json ?? true;
+  const writeLatest = options.writeLatest ?? true;
+  const retention = options.retention ?? 0;
+
   await fs.mkdir(dir, { recursive: true });
-  const markdownPath = path.join(dir, `activity.v${report.version}.md`);
-  const jsonPath = path.join(dir, `activity.v${report.version}.json`);
-  await fs.writeFile(markdownPath, renderActivityMarkdown(report), 'utf8');
-  await fs.writeFile(jsonPath, JSON.stringify(report, null, 2) + '\n', 'utf8');
-  return { markdownPath, jsonPath };
+
+  const markdownContent = wantMarkdown ? renderActivityMarkdown(report) : null;
+  const jsonContent = wantJson ? JSON.stringify(report, null, 2) + '\n' : null;
+
+  let markdownPath: string | null = null;
+  let jsonPath: string | null = null;
+  let latestMarkdownPath: string | null = null;
+  let latestJsonPath: string | null = null;
+
+  if (markdownContent !== null) {
+    markdownPath = path.join(dir, `activity.v${report.version}.md`);
+    await fs.writeFile(markdownPath, markdownContent, 'utf8');
+    if (writeLatest) {
+      latestMarkdownPath = path.join(dir, 'activity.latest.md');
+      await fs.writeFile(latestMarkdownPath, markdownContent, 'utf8');
+    }
+  }
+  if (jsonContent !== null) {
+    jsonPath = path.join(dir, `activity.v${report.version}.json`);
+    await fs.writeFile(jsonPath, jsonContent, 'utf8');
+    if (writeLatest) {
+      latestJsonPath = path.join(dir, 'activity.latest.json');
+      await fs.writeFile(latestJsonPath, jsonContent, 'utf8');
+    }
+  }
+
+  if (retention > 0) {
+    await pruneOldActivityFiles(dir, retention);
+  }
+
+  return { markdownPath, jsonPath, latestMarkdownPath, latestJsonPath };
+}
+
+/**
+ * Keep only the newest `keep` versions of activity.v{N}.{md,json}. Each format
+ * is pruned independently so disabling one format mid-lifetime does not delete
+ * the other format's older files. The `activity.latest.*` pointers are never
+ * pruned.
+ */
+async function pruneOldActivityFiles(dir: string, keep: number): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return;
+  }
+
+  const buckets: Record<'md' | 'json', { name: string; version: number }[]> = {
+    md: [],
+    json: []
+  };
+  for (const name of entries) {
+    const match = VERSIONED_ACTIVITY_PATTERN.exec(name);
+    if (!match) continue;
+    const version = Number.parseInt(match[1]!, 10);
+    if (!Number.isFinite(version)) continue;
+    const ext = match[2] as 'md' | 'json';
+    buckets[ext].push({ name, version });
+  }
+
+  for (const list of Object.values(buckets)) {
+    if (list.length <= keep) continue;
+    list.sort((a, b) => b.version - a.version);
+    const toDelete = list.slice(keep);
+    await Promise.all(
+      toDelete.map((entry) =>
+        fs.unlink(path.join(dir, entry.name)).catch(() => undefined)
+      )
+    );
+  }
 }

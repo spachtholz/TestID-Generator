@@ -103,6 +103,8 @@ export interface TaggerRunResult {
   latestPath: string | null;
   activityMarkdownPath: string | null;
   activityJsonPath: string | null;
+  activityLatestMarkdownPath: string | null;
+  activityLatestJsonPath: string | null;
 }
 
 export async function runTagger(
@@ -273,6 +275,8 @@ export async function runTagger(
   let latestPath: string | null = null;
   let activityMarkdownPath: string | null = null;
   let activityJsonPath: string | null = null;
+  let activityLatestMarkdownPath: string | null = null;
+  let activityLatestJsonPath: string | null = null;
   if (!dryRun) {
     const write = await writeRegistry(registry, {
       dir: registryOutputDir,
@@ -291,9 +295,18 @@ export async function runTagger(
         dispositions,
         manualOverrideIds: overrideIds
       });
-      const activityWrite = await writeActivityReport({ dir: registryOutputDir, report });
+      const activityWrite = await writeActivityReport({
+        dir: registryOutputDir,
+        report,
+        markdown: config.activityLog.markdown,
+        json: config.activityLog.json,
+        writeLatest: config.activityLog.writeLatest,
+        retention: config.activityLog.retention
+      });
       activityMarkdownPath = activityWrite.markdownPath;
       activityJsonPath = activityWrite.jsonPath;
+      activityLatestMarkdownPath = activityWrite.latestMarkdownPath;
+      activityLatestJsonPath = activityWrite.latestJsonPath;
     }
 
     // Write a structured collision dump whenever we detected unresolvable
@@ -329,7 +342,9 @@ export async function runTagger(
     registryPath,
     latestPath,
     activityMarkdownPath,
-    activityJsonPath
+    activityJsonPath,
+    activityLatestMarkdownPath,
+    activityLatestJsonPath
   };
 }
 
@@ -411,7 +426,9 @@ function emptyResult(dryRun: boolean): TaggerRunResult {
     registryPath: null,
     latestPath: null,
     activityMarkdownPath: null,
-    activityJsonPath: null
+    activityJsonPath: null,
+    activityLatestMarkdownPath: null,
+    activityLatestJsonPath: null
   };
 }
 

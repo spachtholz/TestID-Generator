@@ -106,6 +106,22 @@ export const TaggerConfigSchema = z.object({
   registryNaming: z.enum(['version', 'timestamp']).default('version'),
   /** emit activity.v{N}.md + .json next to the registry */
   writeActivityLog: z.boolean().default(false),
+  /**
+   * Fine-grained controls for the activity log. Only consulted when
+   * `writeActivityLog: true` (or `--verbose`) actually enables the report.
+   */
+  activityLog: z
+    .object({
+      /** write activity.v{N}.md (and activity.latest.md if writeLatest) */
+      markdown: z.boolean().default(true),
+      /** write activity.v{N}.json (and activity.latest.json if writeLatest) */
+      json: z.boolean().default(true),
+      /** keep only newest N versioned activity files; 0 = keep all */
+      retention: z.number().int().min(0).default(0),
+      /** also write activity.latest.{md,json} pointers next to the versioned files */
+      writeLatest: z.boolean().default(true)
+    })
+    .default({}),
   /** write pre-run backup.v{N}/ so testid rollback can undo */
   writeBackups: z.boolean().default(true),
   /** warn when a static testid is emitted inside a loop context */
