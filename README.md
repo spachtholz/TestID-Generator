@@ -1,6 +1,6 @@
 # testid-automation
 
-[![Version](https://img.shields.io/badge/version-0.7.1-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
+[![Version](https://img.shields.io/badge/version-0.7.6-blue.svg)](https://github.com/spachtholz/TestID-Generator/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2020-brightgreen.svg)](https://nodejs.org/)
 [![Angular](https://img.shields.io/badge/angular-%E2%89%A5%2018-dd0031.svg)](https://angular.dev/)
@@ -17,10 +17,10 @@ npm run build
 npm pack
 
 # Globally
-npm install -g ./testid-automation-0.5.1.tgz
+npm install -g ./testid-automation-0.7.6.tgz
 
 # Or as a project dev dependency
-npm install --save-dev ./testid-automation-0.5.1.tgz
+npm install --save-dev ./testid-automation-0.7.6.tgz
 ```
 
 ## Quick start

@@ -1,6 +1,6 @@
 {
   "name": "testid-automation",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Build-time Toolchain für Angular: generiert deterministische data-testid-Attribute, versioniert sie, diffed Registry-Stände und erzeugt Robot-Framework-Lokatoren.",
   "type": "module",
   "repository": {
